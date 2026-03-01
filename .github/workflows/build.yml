@@ -1,4 +1,5 @@
 name: Build Android APK
+# Triggering manually to ensure GitHub picks it up
 
 on:
   push:

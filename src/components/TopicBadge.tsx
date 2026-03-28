@@ -44,7 +44,7 @@ const TopicBadge = ({ topic, accuracy, priority, trend, className }: TopicBadgeP
   return (
     <div
       className={cn(
-        "glass-card group rounded-2xl border-l-4 transition-all duration-300 hover:translate-x-1 hover-glow overflow-hidden",
+        "bg-card group rounded-2xl border-l-4 border-border/50 transition-all duration-300 hover:translate-x-1 hover-glow overflow-hidden shadow-sm",
         config.border,
         config.bg,
         className

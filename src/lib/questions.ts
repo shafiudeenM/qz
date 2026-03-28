@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { toast } from "sonner";
 import { type Question, type DatabaseQuestion } from "@/data/sampleQuestions";
 import { processAnswer } from "./sr";
 
@@ -6,54 +7,67 @@ const ONBOARDING_QUESTION_THRESHOLD = 20;
 const ONBOARDING_DAYS_THRESHOLD = 3;
 
 export interface FilterOptions {
-    topic?: string;
-    difficulty?: number;
-    year?: number;
+    topic?: string | string[];
+    topics?: string[]; // Consistency
+    difficulty?: number | number[];
+    difficulties?: number[]; // Consistency
+    year?: number | number[];
+    years?: number[]; // Consistency
     limit?: number;
     lang?: "en" | "ta" | "hi";
 }
 
-export const mapDatabaseQuestionToApp = (dbQ: DatabaseQuestion, lang: "en" | "ta" | "hi" = "en"): Question => {
-    // Determine which fields to use based on language
+export const getTopicDisplayName = (topicId: string) => {
+    if (!topicId) return "General";
+    return topicId
+        .split('-')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+};
+
+export const mapDatabaseQuestionToApp = (dbQ: any, lang: "en" | "ta" | "hi" = "en"): Question => {
+    // Determine which fields to use based on primary language
     const isTamil = lang === "ta";
     const isHindi = lang === "hi";
 
-    let rawOptions = dbQ.options;
-    if (isTamil && dbQ.options_ta) rawOptions = dbQ.options_ta;
-    if (isHindi && dbQ.options_hi) rawOptions = dbQ.options_hi;
+    let rawOptions = dbQ.options || dbQ.res_options;
+    if (isTamil && (dbQ.options_ta || dbQ.res_options_ta)) rawOptions = dbQ.options_ta || dbQ.res_options_ta;
+    if (isHindi && (dbQ.options_hi || dbQ.res_options_hi)) rawOptions = dbQ.options_hi || dbQ.res_options_hi;
 
-    let questionText = dbQ.question_text;
-    if (isTamil && dbQ.question_text_ta) questionText = dbQ.question_text_ta;
-    if (isHindi && dbQ.question_text_hi) questionText = dbQ.question_text_hi;
+    let questionText = dbQ.question_text || dbQ.res_question_text;
+    if (isTamil && (dbQ.question_text_ta || dbQ.res_question_text_ta)) questionText = dbQ.question_text_ta || dbQ.res_question_text_ta;
+    if (isHindi && (dbQ.question_text_hi || dbQ.res_question_text_hi)) questionText = dbQ.question_text_hi || dbQ.res_question_text_hi;
 
-    let explanation = dbQ.explanation;
-    if (isTamil && dbQ.explanation_ta) explanation = dbQ.explanation_ta;
-    if (isHindi && dbQ.explanation_hi) explanation = dbQ.explanation_hi;
+    let explanation = dbQ.explanation || dbQ.res_explanation;
+    if (isTamil && (dbQ.explanation_ta || dbQ.res_explanation_ta)) explanation = dbQ.explanation_ta || dbQ.res_explanation_ta;
+    if (isHindi && (dbQ.explanation_hi || dbQ.res_explanation_hi)) explanation = dbQ.explanation_hi || dbQ.res_explanation_hi;
 
-    // Handle options which might be stored as a JSON object or string array in JSONB
-    let options: string[] = [];
-    if (Array.isArray(rawOptions)) {
-        options = rawOptions;
-    } else if (typeof rawOptions === 'object' && rawOptions !== null) {
-        options = Object.values(rawOptions);
-    }
+    // Helper to process options from JSONB
+    const processOptions = (raw: any): string[] => {
+        if (Array.isArray(raw)) return raw;
+        if (typeof raw === 'object' && raw !== null) return Object.values(raw) as string[];
+        return [];
+    };
 
     return {
-        id: dbQ.id.toString(),
-        text: (isTamil && dbQ.question_text_ta) ? dbQ.question_text_ta : dbQ.question_text,
-        topic: dbQ.topic,
-        options: options,
-        correctAnswer: dbQ.correct_option_index,
-        explanation: (isTamil && dbQ.explanation_ta) ? dbQ.explanation_ta : (dbQ.explanation || "No explanation provided."),
-        difficulty: dbQ.difficulty_level || 1,
-        examYear: dbQ.year?.toString() || "N/A",
-        source: dbQ.exam || "TNPSC",
+        id: (dbQ.id || dbQ.res_id || 0).toString(),
+        text: questionText || "No question text.",
+        text_ta: dbQ.question_text_ta || dbQ.res_question_text_ta, // Preserve for Dual Mode
+        topic: dbQ.topic_id || dbQ.res_topic_id || dbQ.topic || "General",
+        options: processOptions(rawOptions),
+        options_ta: processOptions(dbQ.options_ta || dbQ.res_options_ta), // Preserve for Dual Mode
+        correctAnswer: dbQ.correct_option_index !== undefined ? dbQ.correct_option_index : dbQ.res_correct_option_index,
+        explanation: explanation || "No explanation provided.",
+        explanation_ta: dbQ.explanation_ta || dbQ.res_explanation_ta, // Preserve for Dual Mode
+        difficulty: dbQ.difficulty_weight || dbQ.res_difficulty_weight || dbQ.difficulty_level || 2,
+        examYear: dbQ.exam_year?.toString() || dbQ.res_exam_year?.toString() || dbQ.year?.toString() || "N/A",
+        source: dbQ.exam_name || dbQ.res_exam_name || dbQ.exam || "TNPSC",
     };
 };
 
 export const fetchDailyQuestions = async (limit: number = 5, lang: "en" | "ta" | "hi" = "en"): Promise<Question[]> => {
     const { data, error } = await supabase
-        .from("final_questions")
+        .from("final_questions_v2")
         .select("*")
         .limit(limit);
 
@@ -68,40 +82,12 @@ export const fetchDailyQuestions = async (limit: number = 5, lang: "en" | "ta" |
 // ✅ FIX 4: Mock Test is now FULLY SEPARATED from adaptive/SR logic.
 // Rules: Exclude ALL questions attempted in last 24h (correct OR incorrect).
 // No SM-2 priority. Pure random simulation to replicate real exam conditions.
+import { RANDOM_MOCK_CONFIG, type ExamConfig, type ExamSection } from "./examConfig";
+
 export const fetchMockTestQuestions = async (limit: number = 20, lang: "en" | "ta" | "hi" = "en"): Promise<Question[]> => {
-    const { data: { user } } = await supabase.auth.getUser();
-
-    let excludedIds: number[] = [];
-
-    if (user) {
-        // ✅ Exclude ANY question attempted in the last 24 hours (correct or incorrect)
-        const twentyFourHoursAgo = new Date();
-        twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
-
-        const { data: recentData } = await supabase
-            .from("user_question_stats")
-            .select("question_id")
-            .eq("user_id", user.id)
-            .gte("last_attempt", twentyFourHoursAgo.toISOString());
-
-        excludedIds = recentData?.map(d => d.question_id) || [];
-    }
-
-    // Pure random selection from full pool (ignoring SM-2 state entirely)
-    let query = supabase.from("final_questions").select("*");
-    if (excludedIds.length > 0) {
-        query = query.not("id", "in", `(${excludedIds.join(',')})`);
-    }
-
-    const { data, error } = await query.limit(limit * 3); // fetch wider pool then shuffle
-    if (error || !data) {
-        console.error("Error fetching mock test questions:", error);
-        return fetchDailyQuestions(limit, lang);
-    }
-
-    // Full shuffle — no ordering by SM-2 or next_review
-    const shuffled = [...data].sort(() => Math.random() - 0.5).slice(0, limit);
-    return (shuffled as DatabaseQuestion[]).map(q => mapDatabaseQuestionToApp(q, lang));
+    // ✅ V5: Now follows official syllabus weightage even for "Random" mock
+    // Using RANDOM_MOCK_CONFIG (10 Tamil, 7 GS, 3 Aptitude)
+    return fetchWeightedExamQuestions(RANDOM_MOCK_CONFIG, lang);
 };
 
 export interface QuizSessionData {
@@ -113,6 +99,8 @@ export interface QuizSessionData {
     quiz_snapshot: any;
     answers_snapshot: any;
     user_id?: string;
+    average_response_time?: number; // In ms
+    time_snapshot?: number[]; // In ms, per question
 }
 
 export const saveQuizSession = async (sessionData: QuizSessionData) => {
@@ -163,100 +151,78 @@ export const fetchUserSessions = async (limit: number = 20) => {
 export const updateQuestionMastery = async (
     questionId: number,
     isCorrect: boolean,
-    lastMode: 'daily' | 'mock' | 'review' | 'custom' = 'daily'
+    lastMode: 'daily' | 'mock' | 'review' | 'custom' | 'urgent' | 'weak' | 'power' = 'daily',
+    responseTimeMs?: number
 ) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    // ✅ V6: Unified, Resilient RPC with partition support and optimized SM-2.
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+            console.error("Mastery Update: Not authenticated");
+            toast.error("Not logged in. Progress won't be saved.");
+            return;
+        }
 
-    // 1. Fetch current stats
-    const { data: currentStats } = await supabase
-        .from("user_question_stats")
-        .select("interval, ease_factor, repetitions, total_attempts, total_correct")
-        .eq("user_id", user.id)
-        .eq("question_id", questionId)
-        .maybeSingle();
+        console.log(`📡 Syncing Q#${questionId} as User: ${user.id}`);
 
-    // 2. Calculate new stats
-    const { interval, ease_factor, repetitions, total_attempts, total_correct } = processAnswer(isCorrect, currentStats || undefined);
-
-    // 3. Calculate next_review
-    const nextReview = new Date();
-    if (isCorrect) {
-        nextReview.setDate(nextReview.getDate() + interval);
-    } else {
-        // ✅ FIX 1: Wrong answer → 6-hour delay (not instant)
-        nextReview.setHours(nextReview.getHours() + 6);
-    }
-
-    // 4. Calculate Cooldown
-    let cooldownUntil: string | null = null;
-    if (isCorrect) {
-        const cooldownDays = lastMode === 'mock' ? 7 : 3;
-        const cooldownDate = new Date();
-        cooldownDate.setDate(cooldownDate.getDate() + cooldownDays);
-        cooldownUntil = cooldownDate.toISOString();
-    }
-
-    // 5. Update user_question_stats
-    const { error: statsError } = await supabase
-        .from("user_question_stats")
-        .upsert({
-            user_id: user.id,
-            question_id: questionId,
-            interval,
-            ease_factor,
-            repetitions,
-            total_attempts,
-            total_correct,
-            last_mode: lastMode === 'daily' ? 'quiz' : lastMode, // Map back to old column constraints if needed
-            next_review: nextReview.toISOString(),
-            last_attempt: new Date().toISOString(),
-            cooldown_until: cooldownUntil
-        }, { onConflict: 'user_id,question_id' });
-
-    if (statsError) console.error("Error updating question mastery:", statsError);
-
-    // 6. Fetch Topic & Log Granular Attempt (Product 3 Foundation)
-    const { data: qData } = await supabase
-        .from('final_questions')
-        .select('topic')
-        .eq('id', questionId)
-        .single();
-
-    if (qData?.topic) {
-        // Log to question_attempts table
-        await supabase.from('question_attempts').insert({
-            user_id: user.id,
-            question_id: questionId,
-            topic_id: qData.topic,
-            session_mode: lastMode,
-            is_correct: isCorrect,
-            attempted_at: new Date().toISOString()
+        const { error } = await supabase.rpc('update_question_mastery_v6', {
+            p_question_id: questionId,
+            p_is_correct: isCorrect,
+            p_mode: lastMode,
+            p_response_time: responseTimeMs
         });
 
-        // 7. Update topic mastery cache (for Dashboard analytics)
-        await supabase.rpc('update_topic_mastery', {
-            u_id: user.id,
-            topic_name: qData.topic
-        });
-    }
+        if (error) {
+            console.warn("Mastery RPC v6 Failed, trying v5 fallback...", error);
+            const { error: v5Error } = await supabase.rpc('update_question_mastery_v5', {
+                p_question_id: questionId,
+                p_is_correct: isCorrect,
+                p_mode: lastMode,
+                p_response_time: responseTimeMs
+            });
 
-    // 8. Award XP
-    const xpToAdd = isCorrect ? 10 : 2;
-    await supabase.rpc('increment_xp', { amount: xpToAdd });
+            if (v5Error) {
+                console.error("Mastery RPC Fallback also failed:", v5Error);
+                toast.error(`Sync Failed: ${v5Error.message}`);
+                return;
+            }
+        }
+        
+        toast.info(isCorrect ? "✅ Mastery Boosted" : "📉 Mastery Adjusted");
+        console.log(`✅ Mastery updated for Q#${questionId}`);
+    } catch (err: any) {
+        console.error("Mastery Update Exception:", err);
+        toast.error(`Sync Error: ${err.message}`);
+    }
 };
 
-export const fetchReviewQuestions = async (limit: number = 10, lang: "en" | "ta" | "hi" = "en") => {
+export const fetchReviewQuestions = async (limit: number = 10, lang: "en" | "ta" | "hi" = "en", mode: "review" | "urgent" | "weak" | "power" = "review") => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];
 
-    // Fetch question IDs due for review
-    const { data: stats, error: statsError } = await supabase
+    let query = supabase
         .from("user_question_stats")
         .select("question_id")
-        .eq("user_id", user.id)
-        .lte("next_review", new Date().toISOString())
-        .limit(limit);
+        .eq("user_id", user.id);
+
+    if (mode === 'urgent') {
+        // ✅ NEW: Show ALL questions failed in the last 24 hours immediately.
+        // Bypassing next_review constraint for Urgent mode so users can fix mistakes right away.
+        query = query
+            .gte("last_attempt", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+            .lt("ease_factor", 2.5); // 2.5 is default. Any failure drops it below this.
+    } else if (mode === 'weak') {
+        // Lowest ease factors
+        query = query.order("ease_factor", { ascending: true });
+    } else if (mode === 'power') {
+        // Random reviews (regardless of next_review) or very soon due
+        query = query.order("last_attempt", { ascending: true });
+    } else {
+        // Standard review
+        query = query.lte("next_review", new Date().toISOString());
+    }
+
+    const { data: stats, error: statsError } = await query.limit(limit);
 
     if (statsError || !stats || stats.length === 0) return [];
 
@@ -264,7 +230,7 @@ export const fetchReviewQuestions = async (limit: number = 10, lang: "en" | "ta"
 
     // Fetch the actual questions
     const { data: questions, error: qError } = await supabase
-        .from("final_questions")
+        .from("final_questions_v2")
         .select("*")
         .in("id", questionIds);
 
@@ -273,12 +239,17 @@ export const fetchReviewQuestions = async (limit: number = 10, lang: "en" | "ta"
         throw qError;
     }
 
-    return (questions as DatabaseQuestion[]).map(q => mapDatabaseQuestionToApp(q, lang));
+    const mapped = (questions as DatabaseQuestion[]).map(q => mapDatabaseQuestionToApp(q, lang));
+    // Shuffle if it's power mode or standard
+    if (mode === 'power' || mode === 'review') {
+        return mapped.sort(() => Math.random() - 0.5);
+    }
+    return mapped;
 };
 
 export const bulkIngestQuestions = async (questions: any[]) => {
     const { data, error } = await supabase
-        .from("final_questions")
+        .from("final_questions_v2")
         .insert(questions);
 
     if (error) {
@@ -378,7 +349,7 @@ export const fetchSavedQuestions = async (lang: "en" | "ta" | "hi" = "en") => {
         .from("saved_questions")
         .select(`
             question_id,
-            final_questions (*)
+            final_questions_v2 (*)
         `)
         .eq("user_id", user.id);
 
@@ -387,7 +358,7 @@ export const fetchSavedQuestions = async (lang: "en" | "ta" | "hi" = "en") => {
         return [];
     }
 
-    return (data.map(item => item.final_questions) as any as DatabaseQuestion[])
+    return (data.map(item => item.final_questions_v2) as any as DatabaseQuestion[])
         .filter(Boolean)
         .map(q => mapDatabaseQuestionToApp(q, lang));
 };
@@ -455,53 +426,197 @@ export const fetchLeaderboard = async (district?: string) => {
 };
 
 export const fetchCustomQuestions = async (options: FilterOptions): Promise<Question[]> => {
-    let query = supabase
-        .from("final_questions")
-        .select("*");
+    try {
+        // ✅ V5: Support arrays for multi-select
+        const p_topics = Array.isArray(options.topics) ? options.topics :
+            (options.topic && options.topic !== "All" ? [options.topic] : null);
 
-    if (options.topic && options.topic !== "All") {
-        query = query.eq("topic", options.topic);
+        const p_years = Array.isArray(options.years) ? options.years :
+            (typeof options.year === 'number' && options.year > 0 ? [options.year] : null);
+
+        const p_difficulties = Array.isArray(options.difficulties) ? options.difficulties :
+            (typeof options.difficulty === 'number' && options.difficulty > 0 ? [options.difficulty] : null);
+
+        const { data, error } = await supabase.rpc('get_random_questions_v5', {
+            p_limit: options.limit || 10,
+            p_topics,
+            p_years,
+            p_difficulties,
+            p_excluded_uids: []
+        });
+
+        if (error || !data) {
+            console.error("Error fetching custom questions (RPC V5):", error);
+            throw error;
+        }
+
+        return (data as any[]).map(q => mapDatabaseQuestionToApp(q, options.lang || "en"));
+    } catch (err) {
+        console.error("fetchCustomQuestions failed:", err);
+        throw err;
     }
-    if (options.difficulty && options.difficulty > 0) {
-        query = query.eq("difficulty_level", options.difficulty);
+};
+
+export const fetchCustomQuestionCount = async (options: FilterOptions) => {
+    try {
+        const p_topics = Array.isArray(options.topics) ? options.topics :
+            (options.topic && options.topic !== "All" ? [options.topic] : null);
+
+        const p_years = Array.isArray(options.years) ? options.years :
+            (typeof options.year === 'number' && options.year > 0 ? [options.year] : null);
+
+        const p_difficulties = Array.isArray(options.difficulties) ? options.difficulties :
+            (typeof options.difficulty === 'number' && options.difficulty > 0 ? [options.difficulty] : null);
+
+        const { data, error } = await supabase.rpc('get_custom_question_count_v2', {
+            p_topics,
+            p_years,
+            p_difficulties
+        });
+
+        if (error) {
+            console.error("Error fetching custom question count (V2):", error);
+            return 0;
+        }
+
+        return data as number;
+    } catch (err) {
+        console.error("fetchCustomQuestionCount failed:", err);
+        return 0;
     }
-    if (options.year && options.year > 0) {
-        query = query.eq("year", options.year);
-    }
-
-    query = query.limit(options.limit || 10);
-
-    const { data, error } = await query;
-
-    if (error) {
-        console.error("Error fetching custom questions:", error);
-        throw error;
-    }
-
-    return (data as DatabaseQuestion[]).map(q => mapDatabaseQuestionToApp(q, options.lang || "en"));
 };
 
 export const fetchFilterMetadata = async () => {
-    const { data: topicsData } = await supabase
-        .from("final_questions")
-        .select("topic");
+    const { data, error } = await supabase.rpc('get_custom_filter_metadata');
 
-    const { data: yearsData } = await supabase
-        .from("final_questions")
-        .select("year");
+    if (error || !data) {
+        console.error("Error fetching filter metadata:", error);
+        return { topics: [], years: [] };
+    }
 
-    const topics = Array.from(new Set(topicsData?.map(t => t.topic).filter(Boolean))) as string[];
-    const years = Array.from(new Set(yearsData?.map(y => y.year).filter(Boolean))).sort((a: any, b: any) => b - a) as number[];
+    return {
+        topics: data.topics || [],
+        years: data.years || []
+    };
+};
 
-    return { topics, years };
+export const fetchReviewForecast = async () => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return [];
+
+        const { data, error } = await supabase.rpc('get_review_forecast', {
+            p_user_id: user.id
+        });
+
+        if (error) {
+            console.error("Error fetching review forecast:", error);
+            return [];
+        }
+
+        return data as { review_date: string; question_count: number }[];
+    } catch (err) {
+        console.error("fetchReviewForecast failed:", err);
+        return [];
+    }
+};
+
+export const fetchUrgentCount = async () => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return 0;
+
+        const { count, error } = await supabase
+            .from("user_question_stats")
+            .select("*", { count: 'exact', head: true })
+            .eq("user_id", user.id)
+            .gte("last_attempt", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+            .lt("ease_factor", 2.5);
+
+        if (error) throw error;
+        return count || 0;
+    } catch (err) {
+        console.error("fetchUrgentCount failed:", err);
+        return 0;
+    }
+};
+
+/**
+ * Fetches total unique questions needing attention (Due OR Urgent)
+ */
+export const fetchTotalReviewCount = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return 0;
+
+    const now = new Date().toISOString();
+    const urgentThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    try {
+        const { count, error } = await supabase
+            .from("user_question_stats")
+            .select("*", { count: 'exact', head: true })
+            .eq("user_id", user.id)
+            .or(`next_review.lte.${now},and(last_attempt.gte.${urgentThreshold},ease_factor.lt.2.5)`);
+
+        if (error) throw error;
+        return count || 0;
+    } catch (error) {
+        console.error("Error fetching total review count:", error);
+        return 0;
+    }
+};
+
+export const fetchMasteryHeatmap = async () => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return [];
+
+        const { data, error } = await supabase.rpc('get_topic_mastery_heatmap', {
+            p_user_id: user.id
+        });
+
+        if (error) {
+            console.error("Error fetching mastery heatmap:", error);
+            return [];
+        }
+
+        return data as {
+            topic_id: string;
+            avg_mastery_level: number;
+            avg_ease_factor: number;
+            due_count: number;
+            total_count: number;
+        }[];
+    } catch (err) {
+        console.error("fetchMasteryHeatmap failed:", err);
+        return [];
+    }
+};
+
+export const updateMasteryStatus = async (questionId: number, status: { is_retired?: boolean; is_pinned?: boolean }) => {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { error } = await supabase
+            .from('user_question_stats')
+            .update(status)
+            .eq('user_id', user.id)
+            .eq('question_id', questionId);
+
+        if (error) throw error;
+    } catch (err) {
+        console.error("updateMasteryStatus failed:", err);
+        throw err;
+    }
 };
 
 export const fetchDiagnosticQuestions = async (limit: number = 10, lang: "en" | "ta" | "hi" = "en"): Promise<Question[]> => {
     // Force Level 1 (Easy) for diagnostic phase
     const { data, error } = await supabase
-        .from("final_questions")
+        .from("final_questions_v2")
         .select("*")
-        .eq("difficulty_level", 1)
+        .eq("difficulty_weight", 1)
         .limit(limit);
 
     if (error) {
@@ -521,73 +636,54 @@ const logRepetitionRate = (selectedIds: number[], recentIds: Set<number>) => {
     }
 };
 
-// ✅ ROADMAP V3: High-Performance Selection Engine (Server-Side)
-// Moves the logic from the browser to a Postgres RPC for 10x speed & lower latency.
+// ✅ V4 (PRODUCT-2): Uses SETOF final_questions_v2 RPC — zero type mismatch possible.
+// Parameters: user_uuid, limit_count (matches PRODUCT2_HARDENING.sql exactly).
 export const fetchAdaptiveQuestions = async (limit: number = 5, lang: "en" | "ta" | "hi" = "en"): Promise<Question[]> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return fetchDiagnosticQuestions(limit, lang);
 
     try {
-        // 1. Call the server-side selection engine (RPC)
+        // SETOF RPC: now v3 using optimized sampling
         const { data: rpcData, error: rpcError } = await supabase.rpc('fetch_adaptive_questions_v2', {
             u_id: user.id,
             q_limit: limit
         });
 
         if (rpcError) {
-            console.warn("[Scalability] RPC not found or failed, falling back to legacy client-side selection.", rpcError);
+            console.warn("[Adaptive] RPC failed, falling back to simple random fetch.", rpcError);
             throw rpcError;
         }
 
-        // 2. Map unique RPC names back to DatabaseQuestion structure
-        const mappedData = (rpcData as any[]).map(row => ({
-            id: row.res_id,
-            topic: row.res_topic,
-            question_text: row.res_question_text,
-            question_text_ta: row.res_question_text_ta,
-            question_text_hi: row.res_question_text_hi,
-            options: row.res_options,
-            options_ta: row.res_options_ta,
-            options_hi: row.res_options_hi,
-            correct_option_index: row.res_correct_option_index,
-            explanation: row.res_explanation,
-            explanation_ta: row.res_explanation_ta,
-            explanation_hi: row.res_explanation_hi,
-            difficulty_level: row.res_difficulty_level,
-            year: row.res_year,
-            is_active: row.res_is_active,
-            created_at: row.res_created_at,
-            updated_at: row.res_updated_at,
-            exam: row.res_exam || "TNPSC",
-            subject: row.res_subject || ""
-        }));
-
-        return (mappedData as unknown as DatabaseQuestion[]).map(q => mapDatabaseQuestionToApp(q, lang));
+        // SETOF returns actual column names directly — no res_* remapping needed
+        return (rpcData as any[]).map(q => mapDatabaseQuestionToApp(q, lang));
 
     } catch (err) {
-        // LEGACY FALLBACK: If RPC is not deployed yet, use the code below (client-side)
-        const fiveDaysAgo = new Date();
-        fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+        // Fallback: simple anti-repeat random fetch
+        const twentyFourHoursAgo = new Date();
+        twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
 
-        const { data: allStats } = await supabase
+        const { data: recentStats } = await supabase
             .from("user_question_stats")
-            .select("question_id, last_attempt")
+            .select("question_id")
             .eq("user_id", user.id)
-            .gte("last_attempt", fiveDaysAgo.toISOString());
+            .gte("last_attempt", twentyFourHoursAgo.toISOString());
 
-        // Simple random fallback for legacy mode
+        const excludedIds = recentStats?.map(s => s.question_id) || [];
+
         const { data: fallbackQuestions } = await supabase
-            .from("final_questions")
+            .from("final_questions_v2")
             .select("*")
+            .eq("is_active", true)
+            .not("id", "in", `(${excludedIds.join(",") || "0"})`)
             .limit(limit);
 
-        return (fallbackQuestions as DatabaseQuestion[] || []).map(q => mapDatabaseQuestionToApp(q, lang));
+        return (fallbackQuestions as any[] || []).map(q => mapDatabaseQuestionToApp(q, lang));
     }
 };
 
-// ─── Exam Arena: Weighted Question Fetcher ────────────────────────────────────
 
-import { type ExamConfig, type ExamSection } from "./examConfig";
+
+// ─── Exam Arena: Weighted Question Fetcher ────────────────────────────────────
 
 /**
  * Fetch weighted questions for a full TNPSC exam from final_questions_v2.
@@ -617,63 +713,136 @@ const fetchSectionQuestions = async (
     lang: "en" | "ta" | "hi"
 ): Promise<Question[]> => {
     try {
-        // Fetch more than needed so we can shuffle and pick the right count
-        const fetchMultiplier = 3;
-        const fetchLimit = section.questionCount * fetchMultiplier;
+        // Map examGroup to database exam_pattern
+        const patternMap: Record<string, string> = {
+            'G4': 'TNPSC_GROUP4',
+            'G2': 'TNPSC_GROUP2',
+            'G1': 'TNPSC_GROUP1'
+        };
 
-        const { data, error } = await supabase
-            .from("final_questions_v2")
-            .select("*")
-            .in("topic_id", section.topicIds)
-            .contains("exam_applicable", [examGroup])
-            .eq("is_active", true)
-            .limit(fetchLimit);
+        const pattern = patternMap[examGroup] || 'TNPSC_GROUP4';
+
+        // ✅ V4: Optimized ID-range sampling with dynamic pattern
+        const { data, error } = await supabase.rpc('get_random_questions_v4', {
+            p_limit: section.questionCount,
+            p_topics: section.topicIds,
+            p_exam_pattern: pattern
+        });
 
         if (error || !data || data.length === 0) {
-            console.warn(`[ExamArena] No questions for section "${section.name}" (${section.id}). Error:`, error);
+            console.warn(`[ExamArena] No questions for section "${section.name}" (${section.id}) using pattern ${pattern}. Error:`, error);
+
+            // Fallback: Try without pattern if pattern-specific fetch fails
+            const { data: fallback } = await supabase.rpc('get_random_questions_v4', {
+                p_limit: section.questionCount,
+                p_topics: section.topicIds,
+                p_exam_pattern: null
+            });
+
+            if (fallback && fallback.length > 0) {
+                return (fallback as any[]).map(q => mapDatabaseQuestionToApp(q, lang));
+            }
+
             return [];
         }
 
-        // Shuffle and take exactly the required count
-        const shuffled = [...data].sort(() => Math.random() - 0.5);
-        const selected = shuffled.slice(0, section.questionCount);
-
-        return selected.map(q => mapV2QuestionToApp(q, lang));
+        return (data as any[]).map(q => mapDatabaseQuestionToApp(q, lang));
     } catch (err) {
         console.error(`[ExamArena] Failed to fetch section "${section.id}":`, err);
         return [];
     }
 };
 
-/** Map final_questions_v2 row to app Question type */
-const mapV2QuestionToApp = (
-    dbQ: Record<string, unknown>,
+// ─── PYQ Intelligence Engine ──────────────────────────────────────────────────
+
+export const fetchTopicWeightage = async (examGroup: string = 'G4') => {
+    const { data, error } = await supabase.rpc('get_topic_weightage', {
+        target_exam: examGroup
+    });
+    if (error) {
+        console.error("Error fetching topic weightage:", error);
+        return [];
+    }
+    return data;
+};
+
+export const fetchTopicTrends = async () => {
+    const { data, error } = await supabase.rpc('get_topic_trends');
+    if (error) {
+        console.error("Error fetching topic trends:", error);
+        return [];
+    }
+    return data;
+};
+
+export const fetchProbabilityHeatmap = async () => {
+    const { data, error } = await supabase.rpc('get_probability_heatmap');
+    if (error) {
+        console.error("Error fetching probability heatmap:", error);
+        return [];
+    }
+    return data;
+};
+
+/**
+ * Fetch questions for a custom syllabus-based test.
+ * Randomly picks from specified topics across any exam group.
+ */
+export const fetchCustomSyllabusQuestions = async (
+    topicIds: string[],
+    limit: number = 20,
     lang: "en" | "ta" | "hi" = "en"
-): Question => {
-    const isTamil = lang === "ta";
+): Promise<Question[]> => {
+    try {
+        const { data, error } = await supabase.rpc('get_random_questions_v3', {
+            p_limit: limit,
+            p_topics: topicIds,
+            p_exam: 'ANY' // Backend should handle 'ANY' as ignoring the exam filter
+        });
 
-    let rawOptions = dbQ.options as string[] | Record<string, string>;
-    if (isTamil && dbQ.options_ta) rawOptions = dbQ.options_ta as string[] | Record<string, string>;
+        if (error || !data) {
+            console.error("Error fetching custom syllabus questions:", error);
+            return [];
+        }
 
-    let questionText = dbQ.question_text as string;
-    if (isTamil && dbQ.question_text_ta) questionText = dbQ.question_text_ta as string;
+        let questions = (data as any[]).map(q => mapDatabaseQuestionToApp(q, lang));
 
-    let explanation = dbQ.explanation as string || "No explanation provided.";
-    if (isTamil && dbQ.explanation_ta) explanation = dbQ.explanation_ta as string;
+        // ✅ Robustness: If selected topics have < limit questions, backfill from the global pool
+        if (questions.length < limit) {
+            const { data: extraData } = await supabase.rpc('get_random_questions_v3', {
+                p_limit: limit - questions.length,
+                p_excluded_ids: questions.map(q => parseInt(q.id)),
+                p_exam: 'ANY'
+            });
+            if (extraData) {
+                questions.push(...(extraData as any[]).map(q => mapDatabaseQuestionToApp(q, lang)));
+            }
+        }
 
-    let options: string[] = [];
-    if (Array.isArray(rawOptions)) options = rawOptions;
-    else if (rawOptions && typeof rawOptions === "object") options = Object.values(rawOptions);
+        return questions;
+    } catch (err) {
+        console.error("Failed to fetch custom syllabus questions:", err);
+        return [];
+    }
+};
 
-    return {
-        id: String(dbQ.id),
-        text: questionText,
-        topic: (dbQ.topic_id as string) || "General",
-        options,
-        correctAnswer: dbQ.correct_option_index as number,
-        explanation,
-        difficulty: (dbQ.difficulty_weight as number) || 2,
-        examYear: String(dbQ.exam_year || "N/A"),
-        source: (dbQ.exam_name as string) || "TNPSC",
-    };
+/**
+ * Fetch personalized weakness radar data for the current user.
+ * Combines user mastery with global selection probability.
+ */
+export const fetchUserWeaknessRadar = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data, error } = await supabase
+        .from('user_weakness_radar')
+        .select('*')
+        .eq('user_id', user.id)
+        .limit(6);
+
+    if (error) {
+        console.error("Error fetching weakness radar:", error);
+        return [];
+    }
+    return data;
 };

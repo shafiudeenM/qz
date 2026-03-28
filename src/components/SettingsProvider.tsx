@@ -60,16 +60,17 @@ interface SettingsContextType {
 
 const defaultSettings: AppSettings = {
     app_name: "அறிவு",
-    primary_color: "#3b82f6",
+    primary_color: "#f59e0b",
     secondary_color: "#64748b",
     theme_mode: "light",
-    enabled_features: ["daily_quiz", "mock_test", "review", "leaderboard", "analytics"],
+    enabled_features: ["daily_quiz", "mock_test", "review", "leaderboard", "analytics", "pyq_intelligence"],
     feature_names: {
         daily_quiz: "Daily Quiz",
         mock_test: "Mock Test",
         review: "Review",
         leaderboard: "Leaderboard",
-        analytics: "Analytics"
+        analytics: "Analytics",
+        pyq_intelligence: "PYQ Intelligence"
     },
     maintenance_mode: false,
     xp_multiplier: 1.0,

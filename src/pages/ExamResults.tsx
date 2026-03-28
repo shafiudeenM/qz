@@ -14,6 +14,8 @@ import {
 } from "@/lib/examConfig";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { useAuth } from "@/components/AuthProvider";
+import { translations } from "@/lib/translations";
 
 function formatTime(secs: number) {
     const h = Math.floor(secs / 3600);
@@ -40,6 +42,8 @@ export default function ExamResults() {
     } = location.state || {};
 
     const config = cfgFromState || EXAM_CONFIGS[examGroup || "G4"];
+    const { language, isDualMode, setDualMode } = useAuth();
+    const t = translations[language];
     const [expandedSection, setExpandedSection] = useState<string | null>(null);
     const [showAllQuestions, setShowAllQuestions] = useState(false);
 
@@ -229,7 +233,7 @@ export default function ExamResults() {
                             {[
                                 { label: "General", value: cutoffs.general, color: "text-primary" },
                                 { label: "OBC", value: cutoffs.obc, color: "text-amber-400" },
-                                { label: "SC/ST", value: cutoffs.sc, color: "text-blue-400" },
+                                { label: "SC/ST", value: cutoffs.sc, color: "text-purple-400" },
                             ].map(c => (
                                 <div key={c.label} className="rounded-lg bg-secondary/50 p-3">
                                     <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{c.label}</p>
@@ -249,6 +253,19 @@ export default function ExamResults() {
                     >
                         {showAllQuestions ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                         {showAllQuestions ? "Hide" : "Show"} All Questions with Answers
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className={cn(
+                            "mt-3 w-full text-[10px] font-black uppercase tracking-widest transition-all",
+                            isDualMode
+                                ? "bg-primary/10 text-primary border-primary/40 shadow-[0_0_10px_rgba(var(--primary),0.1)]"
+                                : "text-muted-foreground border-transparent hover:border-primary/20"
+                        )}
+                        onClick={() => setDualMode(!isDualMode)}
+                    >
+                        {t.dual_mode}
                     </Button>
                 </div>
 
@@ -270,21 +287,35 @@ export default function ExamResults() {
                                         {isSkipped ? <MinusCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
                                             : isCorrect ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5" />
                                                 : <XCircle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />}
-                                        <p className="text-foreground">{q.text}</p>
+                                        <div className="flex flex-col">
+                                            <p className="text-foreground">{q.text}</p>
+                                            {isDualMode && q.text_ta && (
+                                                <p className="text-primary font-medium mt-1 text-xs">{q.text_ta}</p>
+                                            )}
+                                        </div>
                                     </div>
                                     <div className="ml-7 space-y-1">
                                         <p className="text-xs text-emerald-400 font-medium">
                                             Correct: {q.options[q.correctAnswer]}
+                                            {isDualMode && q.options_ta && q.options_ta[q.correctAnswer] && (
+                                                <span className="ml-2 italic opacity-80">({q.options_ta[q.correctAnswer]})</span>
+                                            )}
                                         </p>
                                         {!isSkipped && !isCorrect && (
                                             <p className="text-xs text-destructive font-medium">
                                                 Your answer: {q.options[userAns]}
+                                                {isDualMode && q.options_ta && q.options_ta[userAns!] && (
+                                                    <span className="ml-2 italic opacity-80">({q.options_ta[userAns!]})</span>
+                                                )}
                                             </p>
                                         )}
                                         {q.explanation && (
-                                            <p className="text-xs text-muted-foreground mt-2 italic border-l-2 border-muted pl-2">
-                                                {q.explanation}
-                                            </p>
+                                            <div className="text-xs text-muted-foreground mt-2 italic border-l-2 border-muted pl-2 space-y-1">
+                                                <p>{q.explanation}</p>
+                                                {isDualMode && q.explanation_ta && (
+                                                    <p className="text-primary/70">{q.explanation_ta}</p>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                 </div>

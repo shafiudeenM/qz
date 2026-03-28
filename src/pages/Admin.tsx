@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
     Plus,
@@ -243,10 +243,14 @@ const Admin = () => {
         }
     };
 
-    const filteredQuestions = questions.filter(q =>
-        q.question_text?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        q.topic?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredQuestions = useMemo(() => {
+        if (!searchTerm) return questions;
+        const lowerSearch = searchTerm.toLowerCase();
+        return questions.filter(q =>
+            q.question_text?.toLowerCase().includes(lowerSearch) ||
+            q.topic?.toLowerCase().includes(lowerSearch)
+        );
+    }, [questions, searchTerm]);
 
     if (authLoading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
 

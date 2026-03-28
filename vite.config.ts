@@ -17,12 +17,15 @@ export default defineConfig(({ mode }) => ({
     react(),
     mode === "development" && componentTagger(),
     VitePWA({
-      registerType: "autoUpdate",
+      registerType: "prompt",
       includeAssets: ["favicon.ico", "apple-touch-icon.png", "mask-icon.svg"],
       workbox: {
-        skipWaiting: true,
+        skipWaiting: false,  // Don't skip waiting, let the prompt handle it
         clientsClaim: true,
         cleanupOutdatedCaches: true,
+      },
+      devOptions: {
+        enabled: false,  // Never enable in dev to avoid this exactly
       },
       manifest: {
         name: "TNPSCAce — Smart TNPSC Quiz App",

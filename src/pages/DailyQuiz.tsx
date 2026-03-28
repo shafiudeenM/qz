@@ -17,7 +17,7 @@ import { logFrictionEvent, checkTimeFatigue } from "@/lib/FrictionTracker";
 
 const DailyQuiz = () => {
   const navigate = useNavigate();
-  const { language, isGuest, guestQuizCount, incrementGuestCount } = useAuth();
+  const { language, isGuest, guestQuizCount, incrementGuestCount, isDualMode, setDualMode } = useAuth();
   const { isFocusMode } = useFocus();
   const t = translations[language];
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -32,6 +32,8 @@ const DailyQuiz = () => {
   const [isSaved, setIsSaved] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeMilestone, setActiveMilestone] = useState<"first_correct" | "daily_complete" | "streak_3" | "level_up" | null>(null);
+  const [startTime, setStartTime] = useState<number>(Date.now());
+  const [responseTimes, setResponseTimes] = useState<number[]>([]);
 
   useEffect(() => {
     if (isGuest && guestQuizCount >= 2) {
@@ -94,8 +96,11 @@ const DailyQuiz = () => {
     if (isCorrect) setScore((s) => s + 1);
     setAnswers((a) => [...a, selectedAnswer]);
 
-    // Update Spaced Repetition mastery
-    updateQuestionMastery(Number(question.id), isCorrect, 'daily');
+    const timeTaken = Date.now() - startTime;
+    setResponseTimes((prev) => [...prev, timeTaken]);
+
+    // Update Spaced Repetition mastery with Speed data
+    await updateQuestionMastery(Number(question.id), isCorrect, 'daily', timeTaken);
 
     // Track Time Fatigue
     checkTimeFatigue(60 - timeLeft);
@@ -113,6 +118,7 @@ const DailyQuiz = () => {
       setSelectedAnswer(null);
       setIsRevealed(false);
       setTimeLeft(60);
+      setStartTime(Date.now());
     } else {
       try {
         await saveQuizSession({
@@ -122,7 +128,9 @@ const DailyQuiz = () => {
           potential_score: questions.length,
           subject: questions[0]?.topic || "General",
           quiz_snapshot: questions,
-          answers_snapshot: answers
+          answers_snapshot: answers,
+          average_response_time: responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length,
+          time_snapshot: responseTimes
         });
         if (isGuest) {
           incrementGuestCount();
@@ -179,9 +187,14 @@ const DailyQuiz = () => {
       <div className="min-h-screen bg-background">
         <Header />
         <main className="container flex h-[60vh] items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            <p className="text-muted-foreground">{t.loading_questions}</p>
+          <div className="flex flex-col items-center gap-6 relative">
+            <div className="relative">
+              <Loader2 className="h-16 w-16 animate-spin text-primary/30" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <img src="/illustrations/quiz_spark.png" className="w-10 h-10 object-contain animate-pulse" alt="" />
+              </div>
+            </div>
+            <p className="text-sm font-black uppercase tracking-widest text-primary animate-pulse">{t.loading_questions}</p>
           </div>
         </main>
       </div>
@@ -193,10 +206,13 @@ const DailyQuiz = () => {
       <div className="min-h-screen bg-background">
         <Header />
         <main className="container flex h-[60vh] items-center justify-center text-center">
-          <div className="max-w-md">
+          <div className="max-w-md flex flex-col items-center">
+            <div className="mb-6 opacity-20 grayscale">
+              <img src="/illustrations/quiz_spark.png" className="w-24 h-24 object-contain" alt="" />
+            </div>
             <h1 className="text-2xl font-bold">{t.no_questions_found}</h1>
             <p className="mt-2 text-muted-foreground">We couldn't find any questions in your "final_questions" table.</p>
-            <Button onClick={() => navigate("/dashboard")} className="mt-6">
+            <Button onClick={() => navigate("/dashboard")} className="mt-6 rounded-xl font-bold uppercase tracking-widest">
               {t.back_to_dashboard}
             </Button>
           </div>
@@ -294,35 +310,37 @@ const DailyQuiz = () => {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main className="container py-8 max-w-4xl">
-        {/* Progress bar */}
-        <div className="mx-auto mb-8 max-w-2xl no-print">
-          <div className="mb-4 flex items-center justify-between text-sm">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+      <main className="container px-4 md:px-8 py-1">
+        {/* Progress & Timer Bar */}
+        <div className="mb-4 no-print">
+          <div className="flex items-center justify-between bg-card/50 border border-border/50 rounded-2xl p-3 shadow-sm">
+            <div className="flex items-center gap-3 flex-1">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10">
                 <Zap className="h-4 w-4 text-primary" />
               </div>
-              <span className="font-black uppercase tracking-tight">Practice Session</span> — <span className="font-medium text-foreground">{question.topic}</span>
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-1.5 text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
+                  <span>{question.topic}</span>
+                  <span>{currentIndex + 1} / {questions.length}</span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-secondary overflow-hidden">
+                  <motion.div
+                    className="h-full bg-primary"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
+                  />
+                </div>
+              </div>
             </div>
-            <span className="text-muted-foreground">
-              {currentIndex + 1} / {questions.length}
-            </span>
-          </div>
-          <div className="h-2 rounded-full bg-secondary">
-            <motion.div
-              className="h-2 rounded-full bg-primary"
-              initial={{ width: 0 }}
-              animate={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
-            />
-          </div>
-        </div>
 
-        {/* Timer */}
-        <div className="mx-auto mb-8 max-w-2xl no-print">
-          <div className="flex items-center justify-end gap-2 text-sm">
-            <div className={`flex items-center gap-2 rounded-full px-4 py-1.5 glass-card ${timeLeft <= 10 ? "border-destructive text-destructive animate-pulse" : "border-primary/20 text-muted-foreground"}`}>
-              <Clock className="h-4 w-4" />
-              <span className="font-black tabular-nums">{timeLeft}s</span>
+            <div className="ml-4 pl-4 border-l border-border/50">
+              <div className={cn(
+                "flex items-center gap-2 rounded-xl px-3 py-1.5 transition-all",
+                timeLeft <= 10 ? "bg-destructive/10 text-destructive animate-pulse" : "bg-slate-900 text-muted-foreground"
+              )}>
+                <Clock className="h-3.5 w-3.5" />
+                <span className="font-black tabular-nums text-sm">{timeLeft}s</span>
+              </div>
             </div>
           </div>
         </div>
@@ -334,7 +352,7 @@ const DailyQuiz = () => {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
-            className="mx-auto max-w-2xl"
+            className="w-full"
           >
             <div className="mb-4 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-primary/60">
               <span className="rounded bg-primary/10 px-2 py-0.5">{question.source}</span>
@@ -344,6 +362,20 @@ const DailyQuiz = () => {
                 {t.difficulty_label}: {question.difficulty}
               </span>
               <div className="ml-auto flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    "h-7 px-2 text-[10px] font-black border transition-all",
+                    isDualMode
+                      ? "bg-primary/10 text-primary border-primary/40 shadow-[0_0_10px_rgba(var(--primary),0.1)]"
+                      : "text-muted-foreground border-transparent hover:border-primary/20"
+                  )}
+                  onClick={() => setDualMode(!isDualMode)}
+                >
+                  {t.dual_mode}
+                </Button>
+                <div className="h-4 w-[1px] bg-border/50 mx-1" />
                 <Button
                   variant="ghost"
                   size="icon"
@@ -362,8 +394,13 @@ const DailyQuiz = () => {
                 </Button>
               </div>
             </div>
-            <h2 className="mb-8 text-2xl font-black leading-tight tracking-tight text-foreground md:text-3xl">
+            <h2 className="mb-6 text-xl font-black leading-tight tracking-tight text-foreground md:text-2xl">
               {question.text}
+              {isDualMode && question.text_ta && (
+                <span className="block mt-2 text-xl font-bold text-muted-foreground/80 leading-relaxed animate-in fade-in slide-in-from-top-1">
+                  {question.text_ta}
+                </span>
+              )}
             </h2>
 
             <div className="space-y-3">
@@ -385,7 +422,7 @@ const DailyQuiz = () => {
                   <button
                     key={i}
                     onClick={() => !isRevealed && setSelectedAnswer(i)}
-                    className={`flex w-full items-center gap-4 rounded-2xl glass-card p-5 text-left transition-all active:scale-[0.98] ${optionStyle}`}
+                    className={`flex w-full items-center gap-4 rounded-2xl bg-card border border-border/50 p-5 text-left transition-all active:scale-[0.98] ${optionStyle}`}
                     disabled={isRevealed}
                   >
                     <span className={cn(
@@ -394,7 +431,12 @@ const DailyQuiz = () => {
                     )}>
                       {String.fromCharCode(65 + i)}
                     </span>
-                    <span className="text-base font-medium text-foreground leading-relaxed">{option}</span>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-base font-medium text-foreground leading-relaxed">{option}</span>
+                      {isDualMode && question.options_ta?.[i] && (
+                        <span className="text-sm font-bold text-muted-foreground/80">{question.options_ta[i]}</span>
+                      )}
+                    </div>
                     {isRevealed && i === question.correctAnswer && (
                       <CheckCircle className="ml-auto h-5 w-5 text-success" />
                     )}
@@ -415,6 +457,11 @@ const DailyQuiz = () => {
               >
                 <p className="text-sm font-semibold text-info">{t.explanation}</p>
                 <p className="mt-1 text-sm text-foreground">{question.explanation}</p>
+                {isDualMode && question.explanation_ta && (
+                  <p className="mt-2 text-sm font-bold text-muted-foreground/80 border-t border-info/10 pt-2">
+                    {question.explanation_ta}
+                  </p>
+                )}
               </motion.div>
             )}
 

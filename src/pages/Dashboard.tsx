@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { Zap, Brain, BookOpen, TrendingUp, Calendar, Loader2, Sparkles, Clock } from "lucide-react";
+import { Zap, Brain, BookOpen, TrendingUp, Calendar, Loader2, Sparkles, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import Header from "@/components/Header";
 import StatsCard from "@/components/StatsCard";
@@ -9,7 +9,7 @@ import TopicBadge from "@/components/TopicBadge";
 import ProgressRing from "@/components/ProgressRing";
 import { Button } from "@/components/ui/button";
 import { type TopicScore } from "@/data/sampleQuestions";
-import { fetchUserSessions, calculateStreak, fetchLeaderboard } from "@/lib/questions";
+import { fetchUserSessions, calculateStreak, fetchLeaderboard, fetchTotalReviewCount } from "@/lib/questions";
 import { useSettings } from "@/components/SettingsProvider";
 import { useAuth } from "@/components/AuthProvider";
 import { translations } from "@/lib/translations";
@@ -66,6 +66,7 @@ const Dashboard = () => {
   const [userExams, setUserExams] = useState<any[]>([]);
   const [userDistrict, setUserDistrict] = useState<string>("");
   const [leaderboardMode, setLeaderboardMode] = useState<"global" | "district">("global");
+  const [isMasteryMapOpen, setIsMasteryMapOpen] = useState(false);
   const { settings } = useSettings();
   const { language, user } = useAuth();
   const t = translations[language];
@@ -156,13 +157,9 @@ const Dashboard = () => {
           setStats(prev => ({ ...prev, streak: streakCount }));
         }
 
-        // Fetch review count separately if needed (count only)
-        const { count } = await supabase
-          .from("user_question_stats")
-          .select("*", { count: 'exact', head: true })
-          .lte("next_review", new Date().toISOString());
-
-        setReviewCount(count || 0);
+        // Fetch de-duplicated review count (Unique questions needing attention)
+        const totalReviews = await fetchTotalReviewCount();
+        setReviewCount(totalReviews);
 
         // Update stats once with all consolidated values
         setStats({
@@ -214,38 +211,38 @@ const Dashboard = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background pb-12">
+    <div className="min-h-screen bg-background">
       <Header />
-      <main className="container pb-20 pt-8">
+      <main className="container px-4 pt-6 md:pt-8 pb-4">
         {/* Welcome Section */}
-        <section className="relative mb-12 overflow-hidden rounded-[3rem] bg-foreground p-12 text-background shadow-2xl">
+        <section className="relative mb-8 overflow-hidden rounded-[2rem] md:rounded-[2.5rem] bg-foreground p-6 md:p-10 text-background shadow-xl">
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             className="relative z-10"
           >
-            <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center gap-2 mb-3 md:mb-4">
               <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-              <span className="text-xs font-black uppercase tracking-[0.3em] text-primary/80">Mission Active</span>
+              <span className="text-[9px] md:text-xs font-black uppercase tracking-[0.3em] text-primary/80">Mission Active</span>
             </div>
-            <h1 className="max-w-2xl text-5xl font-black leading-tight tracking-tighter md:text-7xl">
+            <h1 className="max-w-2xl text-2xl sm:text-3xl md:text-6xl font-black leading-[1.1] tracking-tighter mb-4">
               {getTimeGreeting(t)}, <br />
               <span className="bg-gradient-to-r from-primary to-primary-foreground bg-clip-text text-transparent">
                 Professional.
               </span>
             </h1>
-            <p className="mt-6 text-xl text-muted-foreground/80 font-medium">
-              You are ahead of <span className="text-primary font-bold">{stats.percentile}%</span> of aspirants. <br />
+            <p className="mt-2 md:mt-4 text-base md:text-lg text-muted-foreground/80 font-medium leading-relaxed">
+              You are ahead of <span className="text-primary font-bold">{stats.percentile}%</span> of aspirants. <br className="hidden sm:block" />
               Maintain your <span className="font-bold underline decoration-primary/30 decoration-4 underline-offset-4">consistency</span>.
             </p>
 
             {/* Level Progress Bar */}
-            <div className="mt-10 max-w-sm">
+            <div className="mt-6 md:mt-8 max-w-sm">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-black uppercase tracking-widest text-primary">Mastery Level {stats.level}</span>
-                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{stats.xp} XP (Next: {stats.xpToNext} XP)</span>
+                <span className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-primary">Mastery Level {stats.level}</span>
+                <span className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-muted-foreground">{stats.xp} XP</span>
               </div>
-              <div className="h-2 w-full bg-primary/10 rounded-full overflow-hidden border border-primary/10">
+              <div className="h-1.5 md:h-2 w-full bg-primary/10 rounded-full overflow-hidden border border-primary/10">
                 <motion.div
                   initial={{ width: 0 }}
                   animate={{ width: `${Math.min((stats.xp / (stats.xp + stats.xpToNext)) * 100, 100)}%` }}
@@ -258,10 +255,23 @@ const Dashboard = () => {
           <motion.div
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="absolute right-12 top-12 hidden md:block"
+            className="absolute right-8 top-8 hidden lg:block"
           >
             <div className="flex flex-col gap-4">
-              {userExams.length > 0 ? (
+              {isLoading ? (
+                /* Premium Skeleton for Exam Cards */
+                <div className="flex flex-col gap-4">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="relative h-24 w-64 rounded-[2rem] bg-slate-900/90 border border-primary/20 p-5 animate-pulse overflow-hidden">
+                      <div className="flex justify-between items-center mb-2">
+                        <div className="h-2 w-16 bg-primary/20 rounded" />
+                        <div className="h-8 w-8 bg-primary/20 rounded-lg" />
+                      </div>
+                      <div className="h-4 w-32 bg-white/10 rounded" />
+                    </div>
+                  ))}
+                </div>
+              ) : userExams.length > 0 ? (
                 <div className="flex flex-col gap-4">
                   {userExams.slice(0, 2).map((exam, idx) => {
                     const days = Math.ceil((new Date(exam.exam_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
@@ -275,8 +285,8 @@ const Dashboard = () => {
                         transition={{ delay: idx * 0.1 }}
                         whileHover={{ scale: 1.05, x: -5 }}
                         className={`relative group overflow-hidden rounded-[2rem] p-5 shadow-2xl transition-all duration-300 border ${idx === 0
-                          ? "bg-slate-900/90 border-primary/40"
-                          : "bg-slate-900/70 border-white/10"
+                          ? "bg-slate-900/95 border-primary/40"
+                          : "bg-slate-900/80 border-white/10"
                           }`}
                       >
                         <div className="relative z-10 flex items-center justify-between gap-6">
@@ -316,7 +326,7 @@ const Dashboard = () => {
               ) : (
                 <motion.div
                   whileHover={{ scale: 1.02 }}
-                  className="glass-card flex flex-col items-center rounded-[2.5rem] bg-white/5 p-8 backdrop-blur-2xl border-white/10 shadow-2xl relative overflow-hidden group"
+                  className="flex flex-col items-center rounded-[2.5rem] bg-slate-900/90 p-8 border border-white/10 shadow-2xl relative overflow-hidden group"
                 >
                   <div className="relative z-10 flex flex-col items-center">
                     <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center mb-4 group-hover:rotate-12 transition-transform">
@@ -340,33 +350,33 @@ const Dashboard = () => {
 
         {/* Today's Mission Center */}
         <section className="mb-12">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-black tracking-tight text-foreground flex items-center gap-2">
-              <Sparkles className="h-6 w-6 text-primary" />
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 px-1">
+            <h2 className="text-xl md:text-2xl font-black tracking-tight text-foreground flex items-center gap-2">
+              <Sparkles className="h-5 w-5 md:h-6 md:w-6 text-primary" />
               Today's Mission
             </h2>
-            <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground uppercase tracking-widest bg-secondary/30 px-3 py-1.5 rounded-lg border">
+            <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest bg-secondary/30 px-3 py-1.5 rounded-lg border w-fit">
               <Clock className="h-3 w-3" />
               Reset in {resetTimer}
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-2 glass-card rounded-[2.5rem] p-8 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent relative overflow-hidden group">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 bg-card border border-border rounded-[2rem] p-6 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent relative overflow-hidden group">
               <div className="relative z-10">
-                <div className="flex items-center justify-between mb-8">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
                   <div>
                     <h3 className="text-lg font-bold text-foreground mb-1">Daily Question Goal</h3>
-                    <p className="text-sm text-muted-foreground">Complete 20 practice questions to maintain your rank.</p>
+                    <p className="text-sm text-muted-foreground leading-relaxed">Complete 20 practice questions to maintain your rank.</p>
                   </div>
-                  <div className="text-right">
-                    <span className="text-3xl font-black text-primary">{Math.min(stats.dailyQuestions, 20)}/20</span>
+                  <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 text-right">
+                    <span className="text-3xl font-black text-primary leading-none">{Math.min(stats.dailyQuestions, 20)}/20</span>
                     <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Target Today</p>
                   </div>
                 </div>
 
-                <div className="space-y-6">
-                  <div className="h-4 w-full bg-secondary rotate-1 rounded-full overflow-hidden border shadow-inner">
+                <div className="space-y-8">
+                  <div className="h-4 w-full bg-secondary rotate-0 sm:rotate-1 rounded-full overflow-hidden border shadow-inner">
                     <motion.div
                       initial={{ width: 0 }}
                       animate={{ width: `${Math.min((stats.dailyQuestions / 20) * 100, 100)}%` }}
@@ -376,15 +386,15 @@ const Dashboard = () => {
                     </motion.div>
                   </div>
 
-                  <div className="flex flex-wrap gap-4 pt-4">
-                    <Link to="/quiz" className="flex-1 min-w-[200px]">
-                      <Button className="w-full h-14 text-lg font-black uppercase tracking-widest bg-primary text-primary-foreground hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-primary/20 rounded-2xl group">
+                  <div className="flex flex-col sm:flex-row gap-3 md:gap-4 pt-2">
+                    <Link to="/quiz" className="flex-1">
+                      <Button className="w-full h-12 text-sm md:text-base font-black uppercase tracking-widest bg-primary text-primary-foreground hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-primary/20 rounded-xl group">
                         <Zap className="mr-2 h-5 w-5 fill-current group-hover:animate-pulse" />
                         Execute Mission
                       </Button>
                     </Link>
-                    <Link to="/exam-arena">
-                      <Button variant="outline" className="h-14 px-8 border-primary/20 text-foreground rounded-2xl font-bold hover:bg-primary/5">
+                    <Link to="/exam-arena" className="flex-1 sm:flex-none">
+                      <Button variant="outline" className="w-full sm:w-auto h-12 px-8 border-primary/20 text-foreground rounded-xl font-bold hover:bg-primary/5">
                         <Brain className="mr-2 h-5 w-5" />
                         Full Mock
                       </Button>
@@ -395,42 +405,31 @@ const Dashboard = () => {
               <div className="absolute -right-10 -bottom-10 h-40 w-40 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-colors" />
             </div>
 
-            <div className="space-y-4">
-              <div className="glass-card rounded-3xl p-6 border-info/20 hover-glow group transition-all">
-                <div className="flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-2xl bg-info/10 flex items-center justify-center text-info group-hover:scale-110 transition-transform">
-                    <TrendingUp className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-black uppercase tracking-widest text-foreground">Next Milestone</h4>
-                    <p className="text-xs text-muted-foreground">
-                      {stats.streak < 7 ? `${7 - stats.streak} more days for Weekly Streak` : "Weekly Streak Achieved!"}
-                    </p>
-                  </div>
-                </div>
-              </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
 
-              <div className="glass-card rounded-3xl p-6 border-success/20 hover-glow group transition-all">
-                <div className="flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-2xl bg-success/10 flex items-center justify-center text-success group-hover:scale-110 transition-transform">
-                    <BookOpen className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-black uppercase tracking-widest text-foreground">Review Due</h4>
-                    <p className="text-xs text-muted-foreground">{reviewCount} questions pending</p>
-                  </div>
-                </div>
-              </div>
-
-              <Link to="/custom-test" className="block">
-                <div className="glass-card rounded-3xl p-6 border-primary/10 hover:border-primary/40 group transition-all cursor-pointer bg-primary/5">
+              <Link to="/review-center" className="block">
+                <div className="h-full bg-card border border-border rounded-2xl md:rounded-3xl p-5 md:p-6 border-success/20 hover:border-success/40 group transition-all cursor-pointer bg-success/5">
                   <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary group-hover:rotate-12 transition-transform">
-                      <Sparkles className="h-6 w-6" />
+                    <div className="h-10 w-10 md:h-12 md:w-12 rounded-xl md:rounded-2xl bg-success/10 flex items-center justify-center text-success group-hover:scale-110 transition-transform shrink-0">
+                      <Brain className="h-5 w-5 md:h-6 md:w-6" />
                     </div>
                     <div>
-                      <h4 className="text-sm font-black uppercase tracking-widest text-foreground">Custom Mission</h4>
-                      <p className="text-xs text-muted-foreground">Build specific training</p>
+                      <h4 className="text-[11px] md:text-sm font-black uppercase tracking-widest text-foreground">Mastery Hub</h4>
+                      <p className="text-[10px] md:text-xs text-muted-foreground">{reviewCount} reviews pending</p>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+
+              <Link to="/custom-test" className="block">
+                <div className="h-full bg-card border border-border rounded-2xl md:rounded-3xl p-5 md:p-6 border-primary/10 hover:border-primary/40 group transition-all cursor-pointer bg-primary/5">
+                  <div className="flex items-center gap-4">
+                    <div className="h-10 w-10 md:h-12 md:w-12 rounded-xl md:rounded-2xl bg-primary/10 flex items-center justify-center text-primary group-hover:rotate-12 transition-transform shrink-0">
+                      <Sparkles className="h-5 w-5 md:h-6 md:w-6" />
+                    </div>
+                    <div>
+                      <h4 className="text-[11px] md:text-sm font-black uppercase tracking-widest text-foreground">Custom Mission</h4>
+                      <p className="text-[10px] md:text-xs text-muted-foreground">Build specific training</p>
                     </div>
                   </div>
                 </div>
@@ -440,13 +439,13 @@ const Dashboard = () => {
         </section>
 
         {/* Stats Grid */}
-        <div className="mb-8 grid gap-4 md:grid-cols-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4 lg:gap-6">
           {isLoading ? (
             Array(5).fill(0).map((_, i) => (
-              <div key={i} className="glass-card rounded-2xl p-6">
-                <Skeleton className="h-4 w-24 mb-2" />
-                <Skeleton className="h-8 w-16 mb-1" />
-                <Skeleton className="h-3 w-32" />
+              <div key={i} className="bg-card border border-border rounded-xl p-4 md:p-6 animate-pulse">
+                <div className="h-3 w-16 bg-muted rounded mb-2" />
+                <div className="h-6 w-12 bg-muted rounded mb-1" />
+                <div className="h-2 w-20 bg-muted rounded" />
               </div>
             ))
           ) : (
@@ -486,124 +485,6 @@ const Dashboard = () => {
               />
             </>
           )}
-        </div>
-
-        {/* Main Content: Mastery & Community */}
-        <div className="grid gap-8 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <section className="mb-12">
-              <div className="flex items-center justify-between mb-8">
-                <div>
-                  <h2 className="text-2xl font-black tracking-tight text-foreground flex items-center gap-2">
-                    <Brain className="h-6 w-6 text-primary" />
-                    Mastery Map
-                  </h2>
-                  <p className="text-sm text-muted-foreground mt-1">Syllabus coverage and proficiency tracking</p>
-                </div>
-                <div className="hidden md:flex items-center gap-4 bg-secondary/20 p-2 rounded-2xl border">
-                  <div className="flex items-center gap-2 px-3 py-1 bg-background rounded-xl border shadow-sm">
-                    <div className="h-2 w-2 rounded-full bg-success" />
-                    <span className="text-[10px] font-bold uppercase tracking-widest">Mastered</span>
-                  </div>
-                  <div className="flex items-center gap-2 px-3 py-1">
-                    <div className="h-2 w-2 rounded-full bg-warning" />
-                    <span className="text-[10px] font-bold uppercase tracking-widest">Growing</span>
-                  </div>
-                  <div className="flex items-center gap-2 px-3 py-1">
-                    <div className="h-2 w-2 rounded-full bg-destructive" />
-                    <span className="text-[10px] font-bold uppercase tracking-widest">Critical</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="max-h-[600px] overflow-y-auto pr-4 scrollbar-thin scrollbar-thumb-primary/10 hover:scrollbar-thumb-primary/20 transition-colors">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {isLoading ? (
-                    Array(6).fill(0).map((_, i) => (
-                      <Skeleton key={i} className="h-32 rounded-[2rem]" />
-                    ))
-                  ) : masteryData.length > 0 ? (
-                    masteryData.map((topic) => (
-                      <TopicBadge
-                        key={topic.topic}
-                        topic={topic.topic}
-                        accuracy={topic.masteryScore}
-                        priority={(topic.priority || "Low").toLowerCase() as any}
-                        trend={topic.masteryScore > 70 ? "improving" : topic.masteryScore < 40 ? "declining" : "stable"}
-                      />
-                    ))
-                  ) : (
-                    <div className="col-span-full py-20 text-center glass-card rounded-[3rem] border-dashed border-2">
-                      <div className="mx-auto w-20 h-20 rounded-full bg-secondary/50 flex items-center justify-center mb-6">
-                        <BookOpen className="h-10 w-10 text-muted-foreground/40" />
-                      </div>
-                      <h3 className="text-xl font-bold text-foreground">No Mastery Data Yet</h3>
-                      <p className="text-muted-foreground mt-2 max-w-xs mx-auto">Complete your first practice session to generate your syllabus mastery map.</p>
-                      <Link to="/quiz">
-                        <Button className="mt-8 rounded-2xl font-black uppercase tracking-widest px-8">Start Now</Button>
-                      </Link>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </section>
-          </div>
-
-          <div className="space-y-6">
-            <div className="glass-card rounded-[2.5rem] p-8 border-primary/10">
-              <h3 className="mb-6 text-xs font-black uppercase tracking-[0.2em] text-muted-foreground">{t.overall_readiness}</h3>
-              <div className="flex justify-center mb-8">
-                <ProgressRing value={stats.readiness || 0} label={t.aspirant} />
-              </div>
-              <div className="space-y-2 rounded-2xl bg-primary/5 p-6 border border-primary/10">
-                <p className="text-center text-xs font-medium leading-relaxed text-muted-foreground">
-                  Current exam readiness is <span className="text-primary font-bold text-sm">{stats.readiness}%</span>. <br />
-                  Focus on <span className="font-bold text-destructive underline underline-offset-2">{stats.focusTopic}</span> to reach 75%.
-                </p>
-              </div>
-            </div>
-
-            {settings.enabled_features.includes("leaderboard") && (
-              <div className="glass-card rounded-[2.5rem] p-8 border-primary/10">
-                <h3 className="mb-8 text-xs font-black uppercase tracking-[0.2em] text-muted-foreground flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-primary" />
-                    {settings.feature_names.leaderboard || t.leaderboard}
-                  </div>
-                  <div className="flex items-center gap-1 bg-secondary/30 p-1 rounded-xl border border-border">
-                    <button
-                      onClick={() => setLeaderboardMode("global")}
-                      className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${leaderboardMode === "global" ? "bg-background shadow-sm text-primary" : "text-muted-foreground"}`}
-                    >
-                      GLOBAL
-                    </button>
-                    <button
-                      onClick={() => setLeaderboardMode("district")}
-                      className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${leaderboardMode === "district" ? "bg-background shadow-sm text-primary" : "text-muted-foreground"}`}
-                      disabled={!userDistrict}
-                      title={!userDistrict ? "Set your district in Profile to see local rankings" : ""}
-                    >
-                      {userDistrict ? userDistrict.toUpperCase() : "DISTRICT"}
-                    </button>
-                  </div>
-                </h3>
-                <div className="space-y-6">
-                  {leaderboard.map((user_row, i) => (
-                    <div key={i} className="flex items-center justify-between group">
-                      <div className="flex items-center gap-4">
-                        <span className="text-[10px] font-black text-muted-foreground/30 w-4">{i + 1}</span>
-                        <div className="h-10 w-10 rounded-xl bg-primary/5 border border-primary/10 flex items-center justify-center text-sm font-black text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-all">
-                          {user_row.name?.charAt(0) || "?"}
-                        </div>
-                        <span className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">{user_row.name}</span>
-                      </div>
-                      <span className="text-[10px] font-black text-primary bg-primary/10 px-3 py-1.5 rounded-lg border border-primary/20">{user_row.score} XP</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
         </div>
       </main>
     </div>

@@ -1,26 +1,39 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { Shield } from "lucide-react";
+import { Shield, Loader2 } from "lucide-react";
 import { AuthProvider, ProtectedRoute } from "./components/AuthProvider";
 import { useAuth } from "./components/AuthProvider";
 import { SettingsProvider, useSettings } from "./components/SettingsProvider";
 import { FocusProvider } from "./components/FocusProvider";
-import Auth from "./pages/Auth";
-import Dashboard from "./pages/Dashboard";
-import DailyQuiz from "./pages/DailyQuiz";
-import MockTest from "./pages/MockTest";
-import Analytics from "./pages/Analytics";
-import Profile from "./pages/Profile";
-import Settings from "./pages/Settings";
-import Review from "./pages/Review";
-import Admin from "./pages/Admin";
-import CustomTest from "./pages/CustomTest";
-import NotFound from "./pages/NotFound";
-import ExamArena from "./pages/ExamArena";
-import ExamSession from "./pages/ExamSession";
-import ExamResults from "./pages/ExamResults";
+
+import ReloadPrompt from "./components/ReloadPrompt";
+
+const Auth = lazy(() => import("./pages/Auth"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const DailyQuiz = lazy(() => import("./pages/DailyQuiz"));
+const MockTest = lazy(() => import("./pages/MockTest"));
+const Analytics = lazy(() => import("./pages/Analytics"));
+const Profile = lazy(() => import("./pages/Profile"));
+const Settings = lazy(() => import("./pages/Settings"));
+const Review = lazy(() => import("./pages/Review"));
+const Admin = lazy(() => import("./pages/Admin"));
+const CustomTest = lazy(() => import("./pages/CustomTest"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const ExamArena = lazy(() => import("./pages/ExamArena"));
+const ExamSession = lazy(() => import("./pages/ExamSession"));
+const ExamResults = lazy(() => import("./pages/ExamResults"));
+const PYQDashboard = lazy(() => import("./pages/PYQDashboard"));
+const SubjectDrilldown = lazy(() => import("./pages/SubjectDrilldown"));
+const ConceptDetail = lazy(() => import("./pages/ConceptDetail"));
+const QuestionDetail = lazy(() => import("./pages/QuestionDetail"));
+const AdminPanel = lazy(() => import("./pages/AdminPanel"));
+const AdvancedAnalytics = lazy(() => import("./pages/AdvancedAnalytics"));
+const PYQIntelligence = lazy(() => import("./pages/PYQIntelligence"));
+const LeaderboardPage = lazy(() => import("./pages/Leaderboard"));
+const ReviewCenter = lazy(() => import("./pages/ReviewCenter"));
 
 const queryClient = new QueryClient();
 
@@ -48,114 +61,195 @@ const MaintenanceGuard = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+const PageLoader = () => (
+  <div className="min-h-screen flex items-center justify-center bg-background">
+    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+  </div>
+);
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
+    <ReloadPrompt />
     <TooltipProvider>
       <AuthProvider>
         <SettingsProvider>
           <FocusProvider>
             <MaintenanceGuard>
-              <Routes>
-                <Route path="/auth" element={<Auth />} />
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                <Route
-                  path="/dashboard"
-                  element={
-                    <ProtectedRoute>
-                      <Dashboard />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/quiz"
-                  element={
-                    <ProtectedRoute>
-                      <DailyQuiz />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/mock-test"
-                  element={
-                    <ProtectedRoute>
-                      <MockTest />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/exam-arena"
-                  element={
-                    <ProtectedRoute>
-                      <ExamArena />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/exam-session"
-                  element={
-                    <ProtectedRoute>
-                      <ExamSession />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/exam-results"
-                  element={
-                    <ProtectedRoute>
-                      <ExamResults />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/custom-test"
-                  element={
-                    <ProtectedRoute>
-                      <CustomTest />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/review"
-                  element={
-                    <ProtectedRoute>
-                      <Review />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/analytics"
-                  element={
-                    <ProtectedRoute>
-                      <Analytics />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/profile"
-                  element={
-                    <ProtectedRoute>
-                      <Profile />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/settings"
-                  element={
-                    <ProtectedRoute>
-                      <Settings />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/admin"
-                  element={
-                    <ProtectedRoute>
-                      <Admin />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
+              <Suspense fallback={<PageLoader />}>
+                <Routes>
+                  <Route path="/auth" element={<Auth />} />
+                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                  <Route
+                    path="/dashboard"
+                    element={
+                      <ProtectedRoute>
+                        <Dashboard />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/quiz"
+                    element={
+                      <ProtectedRoute>
+                        <DailyQuiz />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/mock-test"
+                    element={
+                      <ProtectedRoute>
+                        <MockTest />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/exam-arena"
+                    element={
+                      <ProtectedRoute>
+                        <ExamArena />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/exam-session"
+                    element={
+                      <ProtectedRoute>
+                        <ExamSession />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/exam-results"
+                    element={
+                      <ProtectedRoute>
+                        <ExamResults />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/custom-test"
+                    element={
+                      <ProtectedRoute>
+                        <CustomTest />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/review-center"
+                    element={
+                      <ProtectedRoute>
+                        <ReviewCenter />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/review"
+                    element={
+                      <ProtectedRoute>
+                        <Review />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/analytics"
+                    element={
+                      <ProtectedRoute>
+                        <Analytics />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/profile"
+                    element={
+                      <ProtectedRoute>
+                        <Profile />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/settings"
+                    element={
+                      <ProtectedRoute>
+                        <Settings />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin"
+                    element={
+                      <ProtectedRoute>
+                        <Admin />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/pyq-intelligence"
+                    element={
+                      <ProtectedRoute>
+                        <PYQDashboard />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/subject-drilldown/:subjectName"
+                    element={
+                      <ProtectedRoute>
+                        <SubjectDrilldown />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/concept-detail/:conceptId"
+                    element={
+                      <ProtectedRoute>
+                        <ConceptDetail />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/question-detail/:questionId"
+                    element={
+                      <ProtectedRoute>
+                        <QuestionDetail />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin-panel"
+                    element={
+                      <ProtectedRoute>
+                        <AdminPanel />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/advanced-analytics"
+                    element={
+                      <ProtectedRoute>
+                        <AdvancedAnalytics />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/pyq-legacy"
+                    element={
+                      <ProtectedRoute>
+                        <PYQIntelligence />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/leaderboard"
+                    element={
+                      <ProtectedRoute>
+                        <LeaderboardPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </Suspense>
             </MaintenanceGuard>
             <Toaster />
           </FocusProvider>

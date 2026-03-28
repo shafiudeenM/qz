@@ -1,0 +1,7 @@
+{
+  "partitions_error": "[Errno 11001] getaddrinfo failed",
+  "explain_error": "[Errno 11001] getaddrinfo failed",
+  "versioning_error": "[Errno 11001] getaddrinfo failed",
+  "rls_error": "[Errno 11001] getaddrinfo failed",
+  "concept_mastery_error": "[Errno 11001] getaddrinfo failed"
+}

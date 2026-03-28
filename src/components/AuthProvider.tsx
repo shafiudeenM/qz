@@ -18,6 +18,8 @@ interface AuthContextType {
     incrementGuestCount: () => void;
     proxyUserId: string | null;
     setProxyUserId: (id: string | null) => void;
+    isDualMode: boolean;
+    setDualMode: (val: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,6 +36,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return saved ? parseInt(saved, 10) : 0;
     });
     const [proxyUserId, setProxyUserId] = useState<string | null>(localStorage.getItem("shadow_user_id"));
+    const [isDualMode, setIsDualModeState] = useState<boolean>(() => {
+        return localStorage.getItem("is_dual_mode") === "true";
+    });
     const navigate = useNavigate();
 
     const fetchProfile = async (userId: string) => {
@@ -108,7 +113,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setProxyUserId(id);
         if (id) localStorage.setItem("shadow_user_id", id);
         else localStorage.removeItem("shadow_user_id");
-        window.location.reload(); // Hard reload to reset all providers with new "effective" user
+        window.location.reload();
+    };
+
+    const setDualMode = (val: boolean) => {
+        setIsDualModeState(val);
+        localStorage.setItem("is_dual_mode", val.toString());
     };
 
     return (
@@ -116,7 +126,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             session, user: proxyUserId && role === "admin" ? { ...user, id: proxyUserId } as User : user,
             signOut, isLoading, language, setLanguage, role, isGuest, loginAsGuest,
             guestQuizCount, incrementGuestCount, proxyUserId: role === "admin" ? proxyUserId : null,
-            setProxyUserId: handleSetProxyUserId
+            setProxyUserId: handleSetProxyUserId,
+            isDualMode, setDualMode
         }}>
             {children}
         </AuthContext.Provider>

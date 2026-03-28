@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Clock, Flag, ChevronLeft, ChevronRight, CheckCircle, AlertTriangle, Loader2, Printer, Bookmark, Info } from "lucide-react";
+import { Clock, Flag, ChevronLeft, ChevronRight, CheckCircle, AlertTriangle, Loader2, Printer, Bookmark, Info, Trophy } from "lucide-react";
 import Header from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -12,14 +12,24 @@ import { useFocus } from "@/components/FocusProvider";
 import { translations } from "@/lib/translations";
 import { type Question } from "@/data/sampleQuestions";
 import { cn } from "@/lib/utils";
+import { getTopicDisplayName, getTopicTamilName, getTopicColor } from "@/lib/topicDescriptor";
+import { BookMarked } from "lucide-react";
 import { Sparkles } from "lucide-react";
 import { logFrictionEvent } from "@/lib/FrictionTracker";
 import { useRef } from "react";
 
+const SYLLABUS_TOPICS = [
+  "TAM_01", "TAM_02", "TAM_03", "TAM_07",
+  "HIS_01", "HIS_03", "HIS_04",
+  "POL_01", "POL_02",
+  "GEO_01", "GEO_02",
+  "APT_01", "ECO_01", "SCI_01"
+];
+
 const MockTest = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { language, isGuest, guestQuizCount, incrementGuestCount } = useAuth();
+  const { language, isGuest, guestQuizCount, incrementGuestCount, isDualMode, setDualMode } = useAuth();
   const { isFocusMode } = useFocus();
   const t = translations[language];
   const preLoadedQuestions = location.state?.customQuestions as Question[] | undefined;
@@ -32,7 +42,11 @@ const MockTest = () => {
   const [submitted, setSubmitted] = useState(false);
   const [savedQuestions, setSavedQuestions] = useState<Set<number>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [qStartTime, setQStartTime] = useState<number>(Date.now());
+  const [questionTimes, setQuestionTimes] = useState<number[]>([]);
   const isSubmittedRef = useRef(false);
+  const [hasStarted, setHasStarted] = useState(!!preLoadedQuestions);
+  const [selectedSyllabusTopics, setSelectedSyllabusTopics] = useState<string[]>([]);
 
   useEffect(() => {
     if (isGuest && guestQuizCount >= 2) {
@@ -40,29 +54,55 @@ const MockTest = () => {
       navigate("/auth");
       return;
     }
-    const loadQuestions = async () => {
-      // If questions are provided via state, use those instead of fetching random ones
+    const checkState = async () => {
       if (preLoadedQuestions && preLoadedQuestions.length > 0) {
         setQuestions(preLoadedQuestions);
         setAnswers(new Array(preLoadedQuestions.length).fill(null));
         setTimeLeft(preLoadedQuestions.length * 60);
         setIsLoading(false);
+        setHasStarted(true);
         return;
       }
-
-      try {
-        const data = await fetchMockTestQuestions(20, language);
-        setQuestions(data);
-        setAnswers(new Array(data.length).fill(null));
-        setTimeLeft(data.length * 60);
-      } catch (error) {
-        console.error("Failed to load mock questions:", error);
-      } finally {
-        setIsLoading(false);
-      }
+      setIsLoading(false);
     };
-    loadQuestions();
+    checkState();
   }, [language, preLoadedQuestions, isGuest, guestQuizCount, navigate]);
+
+  const startRandomMock = async () => {
+    setIsLoading(true);
+    setHasStarted(true);
+    try {
+      const data = await fetchMockTestQuestions(20, language);
+      setQuestions(data);
+      setAnswers(new Array(data.length).fill(null));
+      setQuestionTimes(new Array(data.length).fill(0));
+      setTimeLeft(data.length * 60);
+    } catch (error) {
+      console.error("Failed to load mock questions:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const toggleTopic = (tid: string) => {
+    setSelectedSyllabusTopics(prev => prev.includes(tid) ? prev.filter(t => t !== tid) : [...prev, tid]);
+  };
+
+  const handleStartSyllabusExam = () => {
+    if (selectedSyllabusTopics.length === 0) return;
+    const customConfig = {
+      displayName: 'Syllabus Topic Master Test',
+      displayNameTa: 'பாடத்திட்டத் தலைப்புத் தேர்வு',
+      group: 'G4',
+      totalQuestions: 20,
+      durationSeconds: 1200,
+      negativeMarkFraction: 0.33,
+      sections: [
+        { id: 'custom-sec', name: 'Syllabus Focus', nameTa: 'பாடத்திட்டக் கவனம்', questionCount: 20, topicIds: selectedSyllabusTopics }
+      ]
+    };
+    navigate("/exam-session", { state: { customConfig } });
+  };
 
   const question = questions[currentIndex];
 
@@ -79,6 +119,27 @@ const MockTest = () => {
     }, 1000);
     return () => clearInterval(timer);
   }, [submitted, isLoading, question]);
+
+  // Handle dwell time tracking when navigating
+  const handleNavigate = (newIndex: number | ((prev: number) => number)) => {
+    const elapsed = Date.now() - qStartTime;
+    const currentIdx = typeof currentIndex === 'number' ? currentIndex : 0;
+
+    setQuestionTimes(prev => {
+      const updated = [...prev];
+      if (updated[currentIdx] !== undefined) {
+        updated[currentIdx] += elapsed;
+      }
+      return updated;
+    });
+
+    if (typeof newIndex === 'function') {
+      setCurrentIndex(newIndex);
+    } else {
+      setCurrentIndex(newIndex);
+    }
+    setQStartTime(Date.now());
+  };
 
   // Track abandonment
   useEffect(() => {
@@ -145,7 +206,9 @@ const MockTest = () => {
         potential_score: questions.length,
         subject: questions[0]?.topic || "General",
         quiz_snapshot: questions,
-        answers_snapshot: answers
+        answers_snapshot: answers,
+        average_response_time: questionTimes.reduce((a, b) => a + b, 0) / questionTimes.length,
+        time_snapshot: questionTimes
       });
 
       if (isGuest) {
@@ -216,14 +279,98 @@ const MockTest = () => {
     );
   }
 
+  if (!hasStarted) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="w-full px-4 md:px-8 lg:px-12 py-10 mx-auto max-w-[1600px]">
+          <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} className="mb-10 text-center">
+            <h1 className="text-4xl font-black tracking-tight text-foreground">Prepare Your Mock Test</h1>
+            <p className="mt-2 text-muted-foreground">Choose a random 20-question mock or customize your own from specific syllabus topics.</p>
+          </motion.div>
+
+          <div className="flex flex-col gap-6">
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Random Mock */}
+              <div className="rounded-2xl border border-border bg-card p-8 flex flex-col justify-between hover:border-primary/40 transition-colors">
+                <div>
+                  <h2 className="text-2xl font-black text-foreground flex items-center gap-2 mb-2">
+                    <Sparkles className="h-6 w-6 text-primary" /> Random Mock Test
+                  </h2>
+                  <p className="text-muted-foreground mb-6">A standard 20-question test drawn from all syllabus topics to test your overall readiness.</p>
+                </div>
+                <Button onClick={startRandomMock} className="w-full text-lg h-14 bg-primary/10 text-primary font-black uppercase tracking-widest rounded-xl hover:bg-primary/20">
+                  Start Random Mock
+                </Button>
+              </div>
+
+              {/* Full Length Mock Link */}
+              <div className="rounded-2xl border border-border bg-card p-8 flex flex-col justify-between hover:border-primary/40 transition-colors">
+                <div>
+                  <h2 className="text-2xl font-black text-foreground flex items-center gap-2 mb-2">
+                    <Trophy className="h-6 w-6 text-primary" /> Full Length Mock
+                  </h2>
+                  <p className="text-muted-foreground mb-6">Take a complete official exam-style mock with actual question counts and section weightage.</p>
+                </div>
+                <Button onClick={() => navigate("/exam-arena")} className="w-full text-lg h-14 bg-primary text-primary-foreground font-black uppercase tracking-widest rounded-xl">
+                  Choose Exam
+                </Button>
+              </div>
+            </div>
+
+            {/* Syllabus Master */}
+            <div className="rounded-[2.5rem] border border-primary/20 bg-primary/5 p-10 flex flex-col justify-between shadow-lg">
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-3xl font-black text-foreground flex items-center gap-3">
+                    <BookMarked className="h-8 w-8 text-primary" /> Syllabus Master
+                  </h2>
+                  <span className="text-xs bg-primary/20 text-primary px-3 py-1 rounded-full font-bold uppercase tracking-widest">Pro</span>
+                </div>
+                <p className="text-muted-foreground text-lg mb-8">Target weak areas by selecting specific chapters for a customized mock test.</p>
+
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4 mb-8 max-h-[400px] overflow-y-auto pr-4 scrollbar-thin">
+                  {SYLLABUS_TOPICS.map(tid => {
+                    const isSelected = selectedSyllabusTopics.includes(tid);
+                    return (
+                      <button
+                        key={tid}
+                        onClick={() => toggleTopic(tid)}
+                        className={cn("flex flex-col items-start p-4 rounded-2xl border text-left transition-all hover:scale-[1.02]", isSelected ? "border-primary bg-primary/10 ring-2 ring-primary shadow-sm" : "border-border hover:border-primary/40 bg-background")}
+                      >
+                        <div className={cn("px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-widest mb-2", isSelected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}>{tid.split('_')[0]}</div>
+                        <div className="text-sm font-black text-foreground w-full line-clamp-2 leading-tight mb-1">{getTopicTamilName(tid)}</div>
+                        <div className="text-[10px] text-muted-foreground truncate w-full">{getTopicDisplayName(tid)}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <Button
+                onClick={handleStartSyllabusExam}
+                disabled={selectedSyllabusTopics.length === 0}
+                className="w-full text-xl h-16 font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-primary/20"
+              >
+                {selectedSyllabusTopics.length > 0 ? `Generate from ${selectedSyllabusTopics.length} Topics` : "Select Topics to Begin"}
+              </Button>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   if (!isLoading && questions.length === 0) {
     return (
       <div className="min-h-screen bg-background">
         <Header />
         <main className="container flex h-[60vh] items-center justify-center text-center">
           <div className="max-w-md">
-            <h1 className="text-2xl font-bold">No Questions Found</h1>
-            <p className="mt-2 text-muted-foreground">We couldn't find any questions for the mock test. Please check the "final_questions" table.</p>
+            <h1 className="text-2xl font-bold">{t.no_questions_found}</h1>
+            <p className="mt-2 text-muted-foreground mb-6">
+              {t.narrow_filters_warning}
+            </p>
             <Button className="w-full gap-2" size="lg" onClick={() => navigate("/dashboard")}>
               {t.back_to_dashboard}
             </Button>
@@ -296,10 +443,13 @@ const MockTest = () => {
                     )}
                     <div>
                       <p className="text-foreground">{q.text}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Correct: {q.options[q.correctAnswer]}
+                      {isDualMode && q.text_ta && (
+                        <p className="mt-1 text-sm font-bold text-muted-foreground/70">{q.text_ta}</p>
+                      )}
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Correct: {q.options[q.correctAnswer]} {isDualMode && q.options_ta?.[q.correctAnswer] && `(${q.options_ta[q.correctAnswer]})`}
                         {answers[i] !== null && answers[i] !== q.correctAnswer && (
-                          <> • Your answer: {q.options[answers[i]!]}</>
+                          <> • Your answer: {q.options[answers[i]!]} {isDualMode && q.options_ta?.[answers[i]!] && `(${q.options_ta[answers[i]!]})`}</>
                         )}
                       </p>
                     </div>
@@ -343,7 +493,7 @@ const MockTest = () => {
       <Header />
       <main className="container py-6">
         {/* Top bar */}
-        <div className="mb-8 flex items-center justify-between glass-card rounded-2xl px-6 py-4 no-print">
+        <div className="mb-8 flex items-center justify-between bg-card border border-border rounded-2xl px-6 py-4 no-print">
           <div className="flex flex-col">
             <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
               Progress
@@ -382,15 +532,37 @@ const MockTest = () => {
               <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
                 <span className="rounded bg-secondary px-2 py-0.5">{question.topic}</span>
                 <span>{question.source} • {question.examYear}</span>
+                <div className="ml-auto flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      "h-7 px-2 text-[10px] font-black border transition-all",
+                      isDualMode
+                        ? "bg-primary/10 text-primary border-primary/40 shadow-[0_0_10px_rgba(var(--primary),0.1)]"
+                        : "text-muted-foreground border-transparent hover:border-primary/20"
+                    )}
+                    onClick={() => setDualMode(!isDualMode)}
+                  >
+                    {t.dual_mode}
+                  </Button>
+                </div>
               </div>
-              <h2 className="mb-6 text-lg font-semibold text-foreground">{question.text}</h2>
+              <h2 className="mb-6 text-lg font-semibold text-foreground">
+                {question.text}
+                {isDualMode && question.text_ta && (
+                  <span className="block mt-2 text-base font-bold text-muted-foreground/80 leading-relaxed animate-in fade-in slide-in-from-top-1">
+                    {question.text_ta}
+                  </span>
+                )}
+              </h2>
 
               <div className="space-y-3">
                 {question.options.map((option, i) => (
                   <button
                     key={i}
                     onClick={() => selectAnswer(i)}
-                    className={`flex w-full items-center gap-4 rounded-2xl glass-card p-5 text-left transition-all active:scale-[0.98] group ${answers[currentIndex] === i
+                    className={`flex w-full items-center gap-4 rounded-2xl bg-card border border-border p-5 text-left transition-all active:scale-[0.98] group ${answers[currentIndex] === i
                       ? "border-primary bg-primary/10 ring-2 ring-primary ring-offset-2 scale-[1.02] shadow-lg shadow-primary/20"
                       : "hover-glow"
                       }`}
@@ -401,7 +573,12 @@ const MockTest = () => {
                     )}>
                       {String.fromCharCode(65 + i)}
                     </span>
-                    <span className="text-base font-medium text-foreground leading-relaxed">{option}</span>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-base font-medium text-foreground leading-relaxed">{option}</span>
+                      {isDualMode && question.options_ta?.[i] && (
+                        <span className="text-sm font-bold text-muted-foreground/70">{question.options_ta[i]}</span>
+                      )}
+                    </div>
                   </button>
                 ))}
               </div>
@@ -459,7 +636,7 @@ const MockTest = () => {
           </div>
 
           {/* Question navigator */}
-          <div className="glass-card rounded-2xl p-6 no-print">
+          <div className="bg-card border border-border rounded-2xl p-6 no-print">
             <div className="flex flex-col gap-1 mb-6">
               <span className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">
                 {t.question} Navigator

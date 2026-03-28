@@ -45,7 +45,9 @@ export const calculateTopicMastery = (sessions: any[], topic: string): TopicMast
         totalPossibleWeightedScore += (totalQ * difficultyWeight * recencyWeight);
     });
 
-    const masteryScore = Math.min(100, Math.round((totalWeightedScore / totalPossibleWeightedScore) * 100));
+    const masteryScore = totalPossibleWeightedScore === 0
+        ? 0
+        : Math.min(100, Math.round((totalWeightedScore / totalPossibleWeightedScore) * 100));
 
     // Determine Level
     let level: TopicMasteryStats["level"] = "Novice";

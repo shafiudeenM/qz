@@ -16,6 +16,7 @@ export const translations = {
         checking: "Checking...",
         validating: "Validating...",
         back_to_dashboard: "Back to Dashboard",
+        dual_mode: "Dual Mode (EN + TA)",
 
         // Dashboard
         welcome_back: "Welcome back",
@@ -73,6 +74,7 @@ export const translations = {
         next_question: "Next Question",
         see_results: "See Results",
         no_questions_found: "No Questions Found",
+        narrow_filters_warning: "No questions found with these filters. Try broadening your criteria.",
         loading_questions: "Loading questions...",
         difficulty_label: "Difficulty",
         performance_heatmap: "Topic Performance Heatmap",
@@ -115,6 +117,7 @@ export const translations = {
         checking: "சரிபார்க்கிறது...",
         validating: "சரிபார்க்கப்படுகிறது...",
         back_to_dashboard: "டாஷ்போர்டிற்குத் திரும்பு",
+        dual_mode: "இருமொழி முறை (EN + TA)",
 
         // Dashboard
         welcome_back: "மீண்டும் வருக",
@@ -172,6 +175,7 @@ export const translations = {
         next_question: "அடுத்த கேள்வி",
         see_results: "முடிவுகளைப் பார்",
         no_questions_found: "கேள்விகள் எதுவும் இல்லை",
+        narrow_filters_warning: "இந்த வடிப்பான்களுடன் கேள்விகள் எதுவும் இல்லை. உங்கள் விருப்பங்களை விரிவுபடுத்த முயற்சிக்கவும்.",
         loading_questions: "கேள்விகள் ஏற்றப்படுகின்றன...",
         difficulty_label: "கடின நிலை",
         performance_heatmap: "தலைப்பு வாரியான செயல்திறன்",
@@ -214,6 +218,7 @@ export const translations = {
         checking: "जाँच हो रही है...",
         validating: "सत्यापन हो रहा है...",
         back_to_dashboard: "डैशबोर्ड पर वापस जाएं",
+        dual_mode: "दोहरी भाषा मोड (EN + TA)",
 
         // Dashboard
         welcome_back: "वापस स्वागत है",
@@ -271,6 +276,7 @@ export const translations = {
         next_question: "अगला प्रश्न",
         see_results: "परिणाम देखें",
         no_questions_found: "कोई प्रश्न नहीं मिला",
+        narrow_filters_warning: "इन फिल्टरों के साथ कोई प्रश्न नहीं मिला। अपनी मापदंडों को और व्यापक बनाने का प्रयास करें।",
         loading_questions: "प्रश्न लोड हो रहे हैं...",
         difficulty_label: "कठिनाई",
         performance_heatmap: "विषय प्रदर्शन हीटमैप",

@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
-import { Clock, BookOpen, Target, ChevronRight, AlertCircle, Trophy, Users } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Clock, BookOpen, Target, ChevronRight, AlertCircle, Trophy, Users, BookMarked, Sparkles } from "lucide-react";
 import Header from "@/components/Header";
 import { Button } from "@/components/ui/button";
-import { EXAM_CONFIGS, type ExamGroup } from "@/lib/examConfig";
+import { EXAM_CONFIGS, type ExamGroup, type ExamConfig } from "@/lib/examConfig";
+import { getTopicDisplayName, getTopicTamilName, getTopicColor } from "@/lib/topicDescriptor";
+import { cn } from "@/lib/utils";
 
 const groupMeta: Record<ExamGroup, { badge: string; color: string; description: string; eligibility: string }> = {
     G4: {
@@ -15,7 +17,7 @@ const groupMeta: Record<ExamGroup, { badge: string; color: string; description: 
     },
     G2: {
         badge: "Group 2",
-        color: "from-blue-500/20 to-indigo-500/10 border-blue-500/30",
+        color: "from-primary/20 to-orange-500/10 border-primary/30",
         description: "Sub-Inspector Level, Revenue Inspector, Surveyor",
         eligibility: "Any Degree",
     },
@@ -26,6 +28,8 @@ const groupMeta: Record<ExamGroup, { badge: string; color: string; description: 
         eligibility: "Any Degree",
     },
 };
+
+const SYLLABUS_TOPICS = [];
 
 export default function ExamArena() {
     const navigate = useNavigate();
@@ -68,7 +72,10 @@ export default function ExamArena() {
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: i * 0.1 }}
-                                onClick={() => { setSelectedGroup(group); setShowConfirm(false); }}
+                                onClick={() => {
+                                    setSelectedGroup(group);
+                                    setShowConfirm(false);
+                                }}
                                 className={`relative cursor-pointer rounded-2xl border bg-gradient-to-br p-6 transition-all duration-200 ${m.color} ${isSelected ? "ring-2 ring-primary scale-[1.02] shadow-xl shadow-primary/20" : "hover:scale-[1.01] hover:shadow-lg"
                                     }`}
                             >
@@ -105,7 +112,7 @@ export default function ExamArena() {
                     })}
                 </div>
 
-                {/* Instructions + Confirm */}
+                {/* Instructions + Confirm (Only for Major Exams) */}
                 {selectedGroup && config && meta && (
                     <motion.div
                         initial={{ opacity: 0, y: 16 }}

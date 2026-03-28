@@ -24,10 +24,13 @@ export interface DatabaseQuestion {
 export interface Question {
   id: string;
   text: string;
+  text_ta?: string;
   topic: string;
   options: string[];
+  options_ta?: string[];
   correctAnswer: number;
   explanation: string;
+  explanation_ta?: string;
   difficulty: number;
   examYear: string;
   source: string;

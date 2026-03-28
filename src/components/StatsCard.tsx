@@ -16,7 +16,7 @@ const StatsCard = ({ label, value, subtitle, icon, trend, className }: StatsCard
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       className={cn(
-        "glass-card rounded-2xl p-5 transition-all hover-glow hover:translate-x-1", // Changed p-6 to p-5, removed active:scale-[0.98], added hover:translate-x-1
+        "bg-card rounded-2xl p-5 transition-all border border-border/50 hover:border-primary/40 hover:bg-slate-900/50 hover:translate-x-1",
         className
       )}
     >

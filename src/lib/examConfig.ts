@@ -152,6 +152,53 @@ export const EXAM_CONFIGS: Record<ExamGroup, ExamConfig> = {
     },
 };
 
+// ─── Special Mock Configurations ─────────────────────────────────────────────
+
+/**
+ * RANDOM_MOCK_CONFIG
+ * A balanced 20-question mock that mirrors the Group 4 weightage.
+ * Used for the "Random Mock" feature in MockTest.tsx.
+ */
+export const RANDOM_MOCK_CONFIG: ExamConfig = {
+    group: 'G4',
+    displayName: 'Random Quick Mock',
+    displayNameTa: 'சீரற்ற விரைவான தேர்வு',
+    totalQuestions: 20,
+    durationSeconds: 1200, // 20 minutes
+    negativeMarkFraction: 1 / 3,
+    sections: [
+        {
+            id: 'tamil-mini',
+            name: 'General Tamil',
+            nameTa: 'பொது தமிழ்',
+            questionCount: 10,
+            isQualifying: true,
+            topicIds: ['TAM_01', 'TAM_02', 'TAM_03', 'TAM_04', 'TAM_05', 'TAM_06', 'TAM_07', 'TAM_08'],
+        },
+        {
+            id: 'gs-mini',
+            name: 'General Studies',
+            nameTa: 'பொது அறிவு',
+            questionCount: 7,
+            topicIds: [
+                'HIS_01', 'HIS_02', 'HIS_03', 'HIS_04', 'HIS_05',
+                'GEO_01', 'GEO_02', 'GEO_04',
+                'POL_01', 'POL_02', 'POL_03', 'POL_04', 'POL_05', 'POL_07', 'POL_08',
+                'ECO_01', 'ECO_02', 'ECO_06',
+                'SCI_01', 'SCI_02', 'SCI_03', 'SCI_04', 'SCI_07',
+                'CUR_01', 'CUR_02',
+            ],
+        },
+        {
+            id: 'aptitude-mini',
+            name: 'Aptitude',
+            nameTa: 'மனத்திறன்',
+            questionCount: 3,
+            topicIds: ['APT_01', 'APT_02', 'APT_03'],
+        },
+    ],
+};
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Get section for a given question number (1-indexed) */

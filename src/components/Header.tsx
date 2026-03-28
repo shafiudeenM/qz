@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Zap, BarChart3, Brain, User, Settings, LogOut, Shield, Eye, EyeOff, Menu, X } from "lucide-react";
+import { Zap, BarChart3, Brain, User, Settings, LogOut, Shield, Eye, EyeOff, Menu, X, Trophy } from "lucide-react";
 import { useState, useEffect } from "react";
 import { calculateStreak } from "@/lib/questions";
 import { useAuth } from "./AuthProvider";
@@ -22,6 +22,8 @@ const navItems = [
   { id: "daily_quiz", label: "Daily Quiz", path: "/quiz", icon: Zap },
   { id: "mock_test", label: "Mock Test", path: "/mock-test", icon: Brain },
   { id: "analytics", label: "Analytics", path: "/analytics", icon: BarChart3 },
+  { id: "pyq_intelligence", label: "Intelligence", path: "/pyq-intelligence", icon: Zap },
+  { id: "leaderboard", label: "Leaderboard", path: "/leaderboard", icon: Trophy },
 ];
 
 const Header = () => {
@@ -46,7 +48,7 @@ const Header = () => {
           variant="ghost"
           size="icon"
           onClick={toggleFocusMode}
-          className="glass-card h-12 w-12 rounded-full border-primary/20 bg-background/50 hover:bg-background"
+          className="h-12 w-12 rounded-full border border-primary/20 bg-slate-900 shadow-xl hover:bg-slate-800"
         >
           <EyeOff className="h-5 w-5 text-primary" />
         </Button>
@@ -132,13 +134,6 @@ const Header = () => {
                     }`}
                 >
                   தமிழ்
-                </button>
-                <button
-                  onClick={() => setLanguage("hi")}
-                  className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${language === "hi" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-                    }`}
-                >
-                  हिन्दी
                 </button>
               </div>
               <Button

@@ -9,12 +9,17 @@ import { type Question } from "@/data/sampleQuestions";
 import { fetchWeightedExamQuestions, saveQuizSession, updateQuestionMastery } from "@/lib/questions";
 import { EXAM_CONFIGS, formatExamTime, calculateExamScore, getSectionForQuestion, type ExamGroup } from "@/lib/examConfig";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/components/AuthProvider";
+import { translations } from "@/lib/translations";
 
 export default function ExamSession() {
     const navigate = useNavigate();
     const location = useLocation();
     const examGroup = (location.state?.examGroup as ExamGroup) || "G4";
-    const config = EXAM_CONFIGS[examGroup];
+    const customConfig = location.state?.customConfig;
+    const config = customConfig || EXAM_CONFIGS[examGroup];
+    const { language, isDualMode, setDualMode } = useAuth();
+    const t = translations[language];
 
     const [questions, setQuestions] = useState<Question[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -206,6 +211,23 @@ export default function ExamSession() {
                         {formatExamTime(timeLeft)}
                     </div>
 
+                    {/* Dual Mode Toggle */}
+                    <div className="hidden md:flex items-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className={cn(
+                                "text-[10px] font-black uppercase tracking-widest transition-all",
+                                isDualMode
+                                    ? "bg-primary/10 text-primary border-primary/40 shadow-[0_0_10px_rgba(var(--primary),0.1)]"
+                                    : "text-muted-foreground border-transparent hover:border-primary/20"
+                            )}
+                            onClick={() => setDualMode(!isDualMode)}
+                        >
+                            {t.dual_mode}
+                        </Button>
+                    </div>
+
                     {/* Submit */}
                     <Button
                         variant="destructive"
@@ -227,159 +249,180 @@ export default function ExamSession() {
             </div>
 
             {/* ── Main Content: Split Panel ── */}
-            <div className="flex flex-1 container gap-0 px-0 max-w-none">
-
-                {/* LEFT: Question Booklet */}
-                <div className="flex-1 min-w-0 border-r border-border overflow-y-auto px-8 py-6">
-                    <AnimatePresence mode="wait">
-                        <motion.div
-                            key={currentIndex}
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 10 }}
-                            transition={{ duration: 0.15 }}
-                        >
-                            {/* Question meta */}
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-4">
-                                <span className="rounded bg-primary/10 text-primary px-2 py-0.5 font-bold">Q.{currentIndex + 1}</span>
-                                <span className="rounded bg-secondary px-2 py-0.5">{currentSection.name}</span>
-                                <span>{question.source} · {question.examYear}</span>
-                                {flagged.has(currentIndex) && (
-                                    <span className="rounded bg-warning/10 text-warning px-2 py-0.5 font-bold">🚩 Flagged</span>
-                                )}
-                            </div>
-
-                            {/* Question text */}
-                            <h2 className="text-lg font-semibold text-foreground leading-relaxed mb-6 whitespace-pre-line">
-                                {question.text}
-                            </h2>
-
-                            {/* Options — styled like question paper */}
-                            <div className="space-y-3">
-                                {question.options.map((option, i) => {
-                                    const label = String.fromCharCode(65 + i); // A, B, C, D
-                                    const isSelected = answers[currentIndex] === i;
-                                    return (
-                                        <button
-                                            key={i}
-                                            onClick={() => selectAnswer(i)}
-                                            className={cn(
-                                                "flex w-full items-center gap-4 rounded-xl border p-4 text-left transition-all duration-150 active:scale-[0.99]",
-                                                isSelected
-                                                    ? "border-primary bg-primary/10 ring-1 ring-primary"
-                                                    : "border-border bg-card hover:border-primary/40 hover:bg-primary/5"
-                                            )}
-                                        >
-                                            <span className={cn(
-                                                "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg font-black text-sm transition-colors",
-                                                isSelected ? "bg-primary text-primary-foreground" : "bg-secondary/80 text-foreground"
-                                            )}>
-                                                {label}
-                                            </span>
-                                            <span className="text-base text-foreground leading-relaxed">{option}</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Navigation */}
-                            <div className="mt-8 flex items-center justify-between">
-                                <Button
-                                    variant="outline"
-                                    onClick={() => setCurrentIndex(i => Math.max(0, i - 1))}
-                                    disabled={currentIndex === 0}
-                                    className="gap-1"
-                                >
-                                    <ChevronLeft className="h-4 w-4" /> Previous
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    onClick={toggleFlag}
-                                    className={flagged.has(currentIndex)
-                                        ? "border-warning text-warning bg-warning/10 gap-1"
-                                        : "gap-1 text-muted-foreground"
-                                    }
-                                >
-                                    <Flag className="h-4 w-4" />
-                                    {flagged.has(currentIndex) ? "Unflag" : "Flag for Review"}
-                                </Button>
-                                <Button
-                                    onClick={() => setCurrentIndex(i => Math.min(questions.length - 1, i + 1))}
-                                    disabled={currentIndex === questions.length - 1}
-                                    className="gap-1 bg-primary text-primary-foreground"
-                                >
-                                    Next <ChevronRight className="h-4 w-4" />
-                                </Button>
-                            </div>
-                        </motion.div>
-                    </AnimatePresence>
+            {!question ? (
+                <div className="flex-1 flex flex-col items-center justify-center p-12">
+                    <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+                    <p className="text-muted-foreground">Preparing question data...</p>
                 </div>
+            ) : (
+                <div className="flex flex-1 container gap-0 px-0 max-w-none">
 
-                {/* RIGHT: OMR Answer Sheet */}
-                <div className="w-72 shrink-0 overflow-y-auto border-l border-border bg-card/30 px-4 py-5">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground mb-1">OMR Answer Sheet</p>
-                    <h2 className="text-sm font-bold text-foreground mb-4">
-                        Q {currentIndex + 1} / {questions.length}
-                    </h2>
-
-                    {/* Section labels */}
-                    {config.sections.map(section => {
-                        const sectionOffset = config.sections.slice(0, config.sections.indexOf(section)).reduce((acc, s) => acc + s.questionCount, 0);
-                        return (
-                            <div key={section.id} className="mb-2">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className={cn(
-                                        "text-[9px] font-black uppercase px-2 py-0.5 rounded",
-                                        section.isQualifying ? "bg-warning/10 text-warning" : "bg-primary/10 text-primary"
-                                    )}>
-                                        {section.name} {section.isQualifying ? "(Q)" : ""}
-                                    </span>
+                    {/* LEFT: Question Booklet */}
+                    <div className="flex-1 min-w-0 border-r border-border overflow-y-auto px-8 py-6">
+                        <AnimatePresence mode="wait">
+                            <motion.div
+                                key={currentIndex}
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: 10 }}
+                                transition={{ duration: 0.15 }}
+                            >
+                                {/* Question meta */}
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-4">
+                                    <span className="rounded bg-primary/10 text-primary px-2 py-0.5 font-bold">Q.{currentIndex + 1}</span>
+                                    <span className="rounded bg-secondary px-2 py-0.5">{currentSection.name}</span>
+                                    {question && (
+                                        <span>{question.source || 'Standard'} · {question.examYear || '2024'}</span>
+                                    )}
+                                    {flagged.has(currentIndex) && (
+                                        <span className="rounded bg-warning/10 text-warning px-2 py-0.5 font-bold">🚩 Flagged</span>
+                                    )}
                                 </div>
-                                <div className="grid grid-cols-5 gap-1.5 mb-3">
-                                    {Array.from({ length: section.questionCount }, (_, i) => {
-                                        const qIdx = sectionOffset + i;
-                                        const ans = answers[qIdx];
-                                        const isCurrent = qIdx === currentIndex;
-                                        const isFlagged = flagged.has(qIdx);
+
+                                {/* Question text */}
+                                <h2 className="text-lg font-semibold text-foreground leading-relaxed mb-6 whitespace-pre-line">
+                                    {question.text}
+                                    {isDualMode && question.text_ta && (
+                                        <div className="mt-4 text-primary font-medium border-t border-primary/10 pt-4">
+                                            {question.text_ta}
+                                        </div>
+                                    )}
+                                </h2>
+
+                                {/* Options — styled like question paper */}
+                                <div className="space-y-3">
+                                    {question.options.map((option, i) => {
+                                        const label = String.fromCharCode(65 + i); // A, B, C, D
+                                        const isSelected = answers[currentIndex] === i;
                                         return (
                                             <button
-                                                key={qIdx}
-                                                onClick={() => setCurrentIndex(qIdx)}
-                                                title={`Q${qIdx + 1}`}
+                                                key={i}
+                                                onClick={() => selectAnswer(i)}
                                                 className={cn(
-                                                    "h-7 w-full rounded text-[9px] font-black transition-all hover:scale-110",
-                                                    isCurrent
-                                                        ? "bg-primary text-primary-foreground shadow-md shadow-primary/30"
-                                                        : ans !== null
-                                                            ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                                                            : isFlagged
-                                                                ? "bg-warning/20 text-warning border border-warning/30"
-                                                                : "bg-secondary/50 text-muted-foreground hover:bg-secondary"
+                                                    "flex w-full items-center gap-4 rounded-xl border p-4 text-left transition-all duration-150 active:scale-[0.99]",
+                                                    isSelected
+                                                        ? "border-primary bg-primary/10 ring-1 ring-primary"
+                                                        : "border-border bg-card hover:border-primary/40 hover:bg-primary/5"
                                                 )}
                                             >
-                                                {qIdx + 1}
+                                                <span className={cn(
+                                                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg font-black text-sm transition-colors",
+                                                    isSelected ? "bg-primary text-primary-foreground" : "bg-secondary/80 text-foreground"
+                                                )}>
+                                                    {label}
+                                                </span>
+                                                <span className="text-base text-foreground leading-relaxed">
+                                                    {option}
+                                                    {isDualMode && question.options_ta && question.options_ta[i] && (
+                                                        <div className="mt-1 text-sm text-primary/80 font-medium italic border-t border-primary/5 pt-1">
+                                                            {question.options_ta[i]}
+                                                        </div>
+                                                    )}
+                                                </span>
                                             </button>
                                         );
                                     })}
                                 </div>
-                            </div>
-                        );
-                    })}
 
-                    {/* Legend */}
-                    <div className="border-t border-border pt-3 space-y-1.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground mt-2">
-                        <div className="flex items-center gap-2">
-                            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/60" /> Answered ({answered})
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span className="h-2.5 w-2.5 rounded-full bg-warning/60" /> Flagged ({flagged.size})
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span className="h-2.5 w-2.5 rounded-full bg-secondary" /> Not Answered ({skipped})
+                                {/* Navigation */}
+                                <div className="mt-8 flex items-center justify-between">
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => setCurrentIndex(i => Math.max(0, i - 1))}
+                                        disabled={currentIndex === 0}
+                                        className="gap-1"
+                                    >
+                                        <ChevronLeft className="h-4 w-4" /> Previous
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        onClick={toggleFlag}
+                                        className={flagged.has(currentIndex)
+                                            ? "border-warning text-warning bg-warning/10 gap-1"
+                                            : "gap-1 text-muted-foreground"
+                                        }
+                                    >
+                                        <Flag className="h-4 w-4" />
+                                        {flagged.has(currentIndex) ? "Unflag" : "Flag for Review"}
+                                    </Button>
+                                    <Button
+                                        onClick={() => setCurrentIndex(i => Math.min(questions.length - 1, i + 1))}
+                                        disabled={currentIndex === questions.length - 1}
+                                        className="gap-1 bg-primary text-primary-foreground"
+                                    >
+                                        Next <ChevronRight className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </motion.div>
+                        </AnimatePresence>
+                    </div>
+
+                    {/* RIGHT: OMR Answer Sheet */}
+                    <div className="w-72 shrink-0 overflow-y-auto border-l border-border bg-card/30 px-4 py-5">
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground mb-1">OMR Answer Sheet</p>
+                        <h2 className="text-sm font-bold text-foreground mb-4">
+                            Q {currentIndex + 1} / {questions.length}
+                        </h2>
+
+                        {/* Section labels */}
+                        {config.sections.map(section => {
+                            const sectionOffset = config.sections.slice(0, config.sections.indexOf(section)).reduce((acc, s) => acc + s.questionCount, 0);
+                            return (
+                                <div key={section.id} className="mb-2">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className={cn(
+                                            "text-[9px] font-black uppercase px-2 py-0.5 rounded",
+                                            section.isQualifying ? "bg-warning/10 text-warning" : "bg-primary/10 text-primary"
+                                        )}>
+                                            {section.name} {section.isQualifying ? "(Q)" : ""}
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-5 gap-1.5 mb-3">
+                                        {Array.from({ length: section.questionCount }, (_, i) => {
+                                            const qIdx = sectionOffset + i;
+                                            const ans = answers[qIdx];
+                                            const isCurrent = qIdx === currentIndex;
+                                            const isFlagged = flagged.has(qIdx);
+                                            return (
+                                                <button
+                                                    key={qIdx}
+                                                    onClick={() => setCurrentIndex(qIdx)}
+                                                    title={`Q${qIdx + 1}`}
+                                                    className={cn(
+                                                        "h-7 w-full rounded text-[9px] font-black transition-all hover:scale-110",
+                                                        isCurrent
+                                                            ? "bg-primary text-primary-foreground shadow-md shadow-primary/30"
+                                                            : ans !== null
+                                                                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                                                                : isFlagged
+                                                                    ? "bg-warning/20 text-warning border border-warning/30"
+                                                                    : "bg-secondary/50 text-muted-foreground hover:bg-secondary"
+                                                    )}
+                                                >
+                                                    {qIdx + 1}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })}
+
+                        {/* Legend */}
+                        <div className="border-t border-border pt-3 space-y-1.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground mt-2">
+                            <div className="flex items-center gap-2">
+                                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/60" /> Answered ({answered})
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="h-2.5 w-2.5 rounded-full bg-warning/60" /> Flagged ({flagged.size})
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="h-2.5 w-2.5 rounded-full bg-secondary" /> Not Answered ({skipped})
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            )}
 
             {/* ── Submit Confirmation Dialog ── */}
             <AnimatePresence>
